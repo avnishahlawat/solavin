@@ -1,0 +1,29 @@
+{
+  "name": "solavin-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SOLAVIN — Modern Real-Time Multiplayer 16 Parchi Card Game",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "dev:server": "npm run start:dev --workspace=@solavin/server",
+    "dev:web": "npm run dev --workspace=@solavin/web",
+    "start": "npm run start:prod --workspace=@solavin/server"
+  },
+  "keywords": [
+    "16-parchi",
+    "card-game",
+    "multiplayer",
+    "socket.io",
+    "nestjs",
+    "react",
+    "typescript"
+  ],
+  "author": "SOLAVIN Team",
+  "license": "MIT"
+}
