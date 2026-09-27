@@ -41,6 +41,6 @@ model GameParticipant {
 model CustomThemeRecord {
   id        String   @id @default(uuid())
   name      String
-  itemsJson String   // JSON stringified array of 4 items
+  itemsJson String // JSON stringified array of 4 items
   createdAt DateTime @default(now())
 }
