@@ -9,6 +9,8 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces",
+    "build:server": "npm run build --workspace=@solavin/shared && npm run prisma:generate --workspace=@solavin/server && npm run build --workspace=@solavin/server",
+    "build:web": "npm run build --workspace=@solavin/shared && npm run build --workspace=@solavin/web",
     "test": "npm run test --workspaces",
     "lint": "npm run lint --workspaces",
     "dev:server": "npm run start:dev --workspace=@solavin/server",
