@@ -9,8 +9,8 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
-    "prisma:generate": "npx prisma generate --schema=prisma/schema.prisma",
-    "prisma:migrate": "npx prisma migrate dev --schema=prisma/schema.prisma",
+    "prisma:generate": "node ../../node_modules/prisma/build/index.js generate --schema=prisma/schema.prisma",
+    "prisma:migrate": "node ../../node_modules/prisma/build/index.js migrate dev --schema=prisma/schema.prisma",
     "test": "jest"
   },
   "dependencies": {
