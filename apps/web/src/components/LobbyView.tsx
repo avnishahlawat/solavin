@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   Copy,
@@ -7,9 +7,9 @@ import {
   Share2,
   Crown,
   Play,
-  Sparkles,
   Layers,
-  Edit2
+  Edit2,
+  Clock
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { PublicGameState, PublicPlayer } from '@solavin/shared';
@@ -19,13 +19,15 @@ interface LobbyViewProps {
   currentPlayerId: string;
   onStartGame: () => void;
   onChangeTheme?: () => void;
+  onUpdateTimer?: (seconds: number) => void;
 }
 
 export const LobbyView: React.FC<LobbyViewProps> = ({
   state,
   currentPlayerId,
   onStartGame,
-  onChangeTheme
+  onChangeTheme,
+  onUpdateTimer
 }) => {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -174,42 +176,88 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           </div>
         </div>
 
-        {/* Selected Theme Details */}
-        <div className="bg-surface-100 border border-card-border rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-cyan-400" />
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300">
-                Deck Theme
-              </h3>
+        {/* Settings Bar: Theme & Turn Timer */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Deck Theme */}
+          <div className="bg-surface-100 border border-card-border rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-cyan-400" />
+                <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300">
+                  Deck Theme
+                </h3>
+              </div>
+              {isHost && onChangeTheme && (
+                <button
+                  onClick={onChangeTheme}
+                  className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-medium"
+                >
+                  <Edit2 className="w-3 h-3" />
+                  Edit
+                </button>
+              )}
             </div>
-            {isHost && onChangeTheme && (
-              <button
-                onClick={onChangeTheme}
-                className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-medium"
-              >
-                <Edit2 className="w-3 h-3" />
-                Change Theme
-              </button>
-            )}
-          </div>
 
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <h4 className="font-extrabold text-base text-white">{state.theme.name}</h4>
-              <p className="text-xs text-slate-400">{state.theme.description || '4 items × 4 copies each'}</p>
+              <div className="flex items-center gap-2 mt-2">
+                {state.theme.items.map((item) => (
+                  <span
+                    key={item.id}
+                    title={item.name}
+                    className="p-1.5 rounded-lg bg-surface-50 border border-card-border text-sm"
+                  >
+                    {item.icon}
+                  </span>
+                ))}
+              </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full sm:w-auto">
-              {state.theme.items.map((item) => (
-                <div
-                  key={item.id}
-                  className="px-3 py-1.5 rounded-lg bg-surface-50 border border-card-border flex items-center gap-2 text-xs font-semibold text-slate-200"
-                >
-                  <span className="text-base">{item.icon}</span>
-                  <span className="truncate max-w-[90px]">{item.name}</span>
-                </div>
-              ))}
+          </div>
+
+          {/* Turn Timer Configuration */}
+          <div className="bg-surface-100 border border-card-border rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300">
+                  Turn Timer
+                </h3>
+              </div>
+              <span className="text-xs font-mono font-bold text-amber-400">
+                {state.turnTimerSeconds === 0 ? 'No Timer' : `${state.turnTimerSeconds}s per turn`}
+              </span>
             </div>
+
+            {isHost && onUpdateTimer ? (
+              <div className="grid grid-cols-5 gap-1.5 mt-2">
+                {[
+                  { label: '15s', val: 15 },
+                  { label: '30s', val: 30 },
+                  { label: '45s', val: 45 },
+                  { label: '60s', val: 60 },
+                  { label: 'Off', val: 0 }
+                ].map((t) => (
+                  <button
+                    key={t.val}
+                    type="button"
+                    onClick={() => onUpdateTimer(t.val)}
+                    className={`py-1.5 text-center rounded-lg border text-xs font-semibold transition-all ${
+                      state.turnTimerSeconds === t.val
+                        ? 'bg-amber-950/40 border-amber-400 text-amber-300'
+                        : 'bg-surface-50 border-card-border text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 mt-2">
+                {state.turnTimerSeconds === 0
+                  ? 'Casual mode with no timer restriction.'
+                  : `Each player has ${state.turnTimerSeconds} seconds to choose and pass a card.`}
+              </p>
+            )}
           </div>
         </div>
 

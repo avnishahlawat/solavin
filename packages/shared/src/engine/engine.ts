@@ -20,7 +20,6 @@ export interface InternalPlayer {
   completedItem?: string;
   completedIcon?: string;
   hand: Card[];
-  selectedCardId: string | null;
   isConnected: boolean;
   socketId?: string;
 }
@@ -31,9 +30,13 @@ export interface InternalGameState {
   round: number;
   theme: Theme;
   hostId: string;
+  turnPlayerId: string | null;
+  starterPlayerId: string | null;
+  turnDeadline: number | null;
+  turnTimerSeconds: number; // e.g. 30, 60, or 0 (no timer)
   players: InternalPlayer[];
   winners: WinnerResult[];
-  lastPass?: PassRecord[];
+  lastPass?: PassRecord;
   updatedAt: number;
 }
 
@@ -69,7 +72,7 @@ export function shuffleDeck(deck: Card[], randomFn: () => number = Math.random):
 }
 
 /**
- * Check if 4 cards form a complete matching set
+ * Check if hand forms a complete matching set of 4 cards
  */
 export function isWinningHand(hand: Card[]): boolean {
   if (hand.length !== 4) return false;
@@ -88,18 +91,12 @@ export function getActivePlayers(state: InternalGameState): InternalPlayer[] {
 
 /**
  * Get anticlockwise passing order for active players.
- * If active seats are [0, 1, 2, 3], anticlockwise direction is:
- * 0 -> 3 -> 2 -> 1 -> 0
- * Reverse sort by seatIndex provides the anticlockwise loop.
+ * For seats [0, 1, 2, 3], anticlockwise direction is:
+ * Seat 0 -> Seat 3 -> Seat 2 -> Seat 1 -> Seat 0
  */
 export function getAnticlockwisePassingOrder(activePlayers: InternalPlayer[]): InternalPlayer[] {
   if (activePlayers.length <= 1) return activePlayers;
-  // Sort descending by seatIndex: seat 3 -> seat 2 -> seat 1 -> seat 0
-  // Or relative to seat 0: 0 -> 3 -> 2 -> 1 -> 0
-  const sorted = [...activePlayers].sort((a, b) => a.seatIndex - b.seatIndex);
-  // To pass anticlockwise from seat 0:
-  // Next player for seat[i] is seat[(i - 1 + length) % length]
-  return sorted;
+  return [...activePlayers].sort((a, b) => a.seatIndex - b.seatIndex);
 }
 
 /**
@@ -114,14 +111,9 @@ export function getPassingNeighbor(
   if (index === -1 || active.length <= 1) return {};
 
   const n = active.length;
-  // Anticlockwise: Seat 0 passes to the preceding seat index in cyclic order: (index - 1 + n) % n
-  // For [0, 1, 2, 3]:
-  // 0 passes to 3
-  // 3 passes to 2
-  // 2 passes to 1
-  // 1 passes to 0
+  // Anticlockwise passing: seat index - 1 (wrapping around)
+  // For [0, 1, 2, 3]: 0 -> 3 -> 2 -> 1 -> 0
   const targetIndex = (index - 1 + n) % n;
-  // Source is the one passing to current: (index + 1) % n
   const sourceIndex = (index + 1) % n;
 
   return {
@@ -136,7 +128,8 @@ export function getPassingNeighbor(
 export function createGame(
   roomCode: string,
   hostId: string,
-  theme: Theme = DEFAULT_THEME
+  theme: Theme = DEFAULT_THEME,
+  turnTimerSeconds: number = 30
 ): InternalGameState {
   return {
     roomCode,
@@ -144,6 +137,10 @@ export function createGame(
     round: 0,
     theme,
     hostId,
+    turnPlayerId: null,
+    starterPlayerId: null,
+    turnDeadline: null,
+    turnTimerSeconds,
     players: [],
     winners: [],
     updatedAt: Date.now()
@@ -151,9 +148,12 @@ export function createGame(
 }
 
 /**
- * Deal 16 cards to 4 players
+ * Deal 16 cards to 4 players and randomly select starter
  */
-export function dealCards(state: InternalGameState, randomFn: () => number = Math.random): InternalGameState {
+export function dealCards(
+  state: InternalGameState,
+  randomFn: () => number = Math.random
+): InternalGameState {
   if (state.players.length !== 4) {
     throw new Error('SOLAVIN requires exactly 4 players to start');
   }
@@ -162,156 +162,137 @@ export function dealCards(state: InternalGameState, randomFn: () => number = Mat
   const shuffled = shuffleDeck(deck, randomFn);
 
   // Distribute 4 cards to each player
-  const players = state.players.map((player, idx) => ({
+  const players: InternalPlayer[] = state.players.map((player, idx) => ({
     ...player,
     hand: shuffled.slice(idx * 4, (idx + 1) * 4),
-    selectedCardId: null,
     status: 'active' as const,
     rank: undefined,
-    completedItem: undefined
+    completedItem: undefined,
+    completedIcon: undefined
   }));
 
-  const newState: InternalGameState = {
+  // Choose a random player as the starter
+  const starterIndex = Math.floor(randomFn() * players.length);
+  const starter = players[starterIndex];
+
+  const turnDeadline =
+    state.turnTimerSeconds > 0 ? Date.now() + state.turnTimerSeconds * 1000 : null;
+
+  const dealtState: InternalGameState = {
     ...state,
     phase: 'PLAYING',
     round: 1,
+    turnPlayerId: starter.id,
+    starterPlayerId: starter.id,
+    turnDeadline,
     players,
     winners: [],
     lastPass: undefined,
     updatedAt: Date.now()
   };
 
-  // Immediate check if anyone was dealt 4 of a kind (very rare, but possible)
-  return checkAndResolveWins(newState);
+  return checkAndResolveWins(dealtState);
 }
 
 /**
- * Player selects a card from their own hand
+ * Turn player passes 1 card anticlockwise to the next player.
+ * Starter starts with 4 cards -> passes 1 -> has 3 cards.
+ * Next player receives card -> has 5 cards -> passes 1 -> has 4 cards.
  */
-export function selectCard(
+export function passCard(
   state: InternalGameState,
   playerId: string,
   cardId: string
-): InternalGameState {
+): { nextState: InternalGameState; pass: PassRecord } {
   if (state.phase !== 'PLAYING') {
-    throw new Error('Cannot select card when not in PLAYING phase');
+    throw new Error('Cannot pass card when not in PLAYING phase');
   }
 
-  const player = state.players.find((p) => p.id === playerId);
-  if (!player) {
-    throw new Error('Player not found');
+  if (state.turnPlayerId !== playerId) {
+    throw new Error(`It is not player ${playerId}'s turn to pass`);
   }
 
-  if (player.status !== 'active') {
-    throw new Error('Only active players can select cards');
+  const active = getActivePlayers(state);
+  const currentPlayer = active.find((p) => p.id === playerId);
+  if (!currentPlayer) {
+    throw new Error(`Current turn player not found or not active`);
   }
 
-  const cardExistsInHand = player.hand.some((c) => c.id === cardId);
-  if (!cardExistsInHand) {
-    throw new Error('Selected card is not in player hand');
+  const cardIndex = currentPlayer.hand.findIndex((c) => c.id === cardId);
+  if (cardIndex === -1) {
+    throw new Error(`Card ${cardId} is not in player hand`);
   }
 
-  const updatedPlayers = state.players.map((p) => {
-    if (p.id === playerId) {
+  const { target } = getPassingNeighbor(playerId, active);
+  if (!target) {
+    throw new Error(`No target neighbor available to receive card`);
+  }
+
+  const passedCard = currentPlayer.hand[cardIndex];
+
+  // Update hands: remove from current, add to target
+  let updatedPlayers = state.players.map((p) => {
+    if (p.id === currentPlayer.id) {
       return {
         ...p,
-        selectedCardId: cardId
+        hand: p.hand.filter((c) => c.id !== passedCard.id)
+      };
+    }
+    if (p.id === target.id) {
+      return {
+        ...p,
+        hand: [...p.hand, passedCard]
       };
     }
     return p;
   });
 
-  return {
-    ...state,
-    players: updatedPlayers,
-    updatedAt: Date.now()
+  const passRecord: PassRecord = {
+    fromPlayerId: currentPlayer.id,
+    toPlayerId: target.id,
+    fromSeatIndex: currentPlayer.seatIndex,
+    toSeatIndex: target.seatIndex,
+    cardId: passedCard.id
   };
-}
 
-/**
- * Check if all active players have selected a card
- */
-export function areAllActivePlayersReady(state: InternalGameState): boolean {
-  const active = getActivePlayers(state);
-  if (active.length === 0) return false;
-  return active.every((p) => p.selectedCardId !== null);
-}
-
-/**
- * Resolve round: Simultaneous anticlockwise pass across all active players
- */
-export function resolvePassingRound(state: InternalGameState): {
-  nextState: InternalGameState;
-  passes: PassRecord[];
-} {
-  if (!areAllActivePlayersReady(state)) {
-    throw new Error('Cannot resolve round until all active players have selected a card');
-  }
-
-  const active = getActivePlayers(state);
-  const n = active.length;
-  const passes: PassRecord[] = [];
-
-  // Map of playerId -> Card being passed by that player
-  const passedCards = new Map<string, Card>();
-
-  for (const player of active) {
-    const card = player.hand.find((c) => c.id === player.selectedCardId);
-    if (!card) {
-      throw new Error(`Player ${player.id} selected card ${player.selectedCardId} not in hand`);
-    }
-    passedCards.set(player.id, card);
-  }
-
-  // Create new hands for each active player
-  const updatedPlayers = state.players.map((player) => {
-    if (player.status !== 'active') return player;
-
-    const { target, source } = getPassingNeighbor(player.id, active);
-    if (!target || !source) return player;
-
-    passes.push({
-      fromPlayerId: player.id,
-      toPlayerId: target.id,
-      fromSeatIndex: player.seatIndex,
-      toSeatIndex: target.seatIndex
-    });
-
-    // Remove the card this player passed
-    const passedCard = passedCards.get(player.id)!;
-    const remainingHand = player.hand.filter((c) => c.id !== passedCard.id);
-
-    // Add the card received from source
-    const receivedCard = passedCards.get(source.id)!;
-    const newHand = [...remainingHand, receivedCard];
-
-    return {
-      ...player,
-      hand: newHand,
-      selectedCardId: null
-    };
-  });
+  // Next turn player is target!
+  let nextTurnPlayerId: string = target.id;
+  const nextDeadline =
+    state.turnTimerSeconds > 0 ? Date.now() + state.turnTimerSeconds * 1000 : null;
 
   const stateAfterPass: InternalGameState = {
     ...state,
     round: state.round + 1,
+    turnPlayerId: nextTurnPlayerId,
+    turnDeadline: nextDeadline,
     players: updatedPlayers,
-    lastPass: passes,
+    lastPass: passRecord,
     updatedAt: Date.now()
   };
 
-  // Check for winners
+  // Check if any player has 4 matching cards and completes their set
   const resolvedState = checkAndResolveWins(stateAfterPass);
+
+  // If nextTurnPlayer finished, advance turn to the next active player in ring
+  if (resolvedState.phase === 'PLAYING') {
+    const nextPlayerObj = resolvedState.players.find((p) => p.id === resolvedState.turnPlayerId);
+    if (!nextPlayerObj || nextPlayerObj.status !== 'active') {
+      const remainingActive = getActivePlayers(resolvedState);
+      if (remainingActive.length > 0) {
+        resolvedState.turnPlayerId = remainingActive[0].id;
+      }
+    }
+  }
 
   return {
     nextState: resolvedState,
-    passes
+    pass: passRecord
   };
 }
 
 /**
  * Check hands of all active players for 4 matching cards.
- * Assign 1st, 2nd, 3rd, 4th ranks dynamically.
+ * If someone holds 4 matching cards, they win and are marked 'finished'.
  */
 export function checkAndResolveWins(state: InternalGameState): InternalGameState {
   const currentWinners = [...state.winners];
@@ -320,10 +301,10 @@ export function checkAndResolveWins(state: InternalGameState): InternalGameState
   let stateChanged = false;
   let updatedPlayers = state.players.map((player) => ({ ...player }));
 
-  // Check active players for completion
+  // Check players with exactly 4 cards for completion
   for (let i = 0; i < updatedPlayers.length; i++) {
     const player = updatedPlayers[i];
-    if (player.status === 'active' && isWinningHand(player.hand)) {
+    if (player.status === 'active' && player.hand.length === 4 && isWinningHand(player.hand)) {
       player.status = 'finished';
       player.rank = nextRank;
       player.completedItem = player.hand[0].itemName;
@@ -346,19 +327,19 @@ export function checkAndResolveWins(state: InternalGameState): InternalGameState
   // Count remaining active players
   const remainingActive = updatedPlayers.filter((p) => p.status === 'active');
 
-  // If only 1 player remains active, they are automatically 4th place
+  // If only 1 active player remains, they are automatically 4th place
   if (remainingActive.length === 1 && currentWinners.length === 3) {
     const lastPlayer = remainingActive[0];
     lastPlayer.status = 'finished';
     lastPlayer.rank = 4;
-    lastPlayer.completedItem = lastPlayer.hand[0]?.itemName;
+    lastPlayer.completedItem = lastPlayer.hand[0]?.itemName || 'Set';
     lastPlayer.completedIcon = lastPlayer.hand[0]?.itemIcon;
 
     currentWinners.push({
       rank: 4,
       playerId: lastPlayer.id,
       playerName: lastPlayer.name,
-      itemName: lastPlayer.completedItem || 'Set',
+      itemName: lastPlayer.completedItem,
       itemIcon: lastPlayer.completedIcon,
       roundCompleted: state.round
     });
@@ -389,9 +370,17 @@ export function validateInvariants(state: InternalGameState): { valid: boolean; 
     const allCards: Card[] = [];
     for (const player of state.players) {
       allCards.push(...player.hand);
-      if (player.status === 'active' || player.status === 'finished') {
+      // Valid hand sizes during game: 3, 4, or 5 cards
+      if (player.status === 'active') {
+        if (player.hand.length < 3 || player.hand.length > 5) {
+          errors.push(
+            `Player ${player.name} (${player.id}) has invalid hand size ${player.hand.length}, expected 3, 4, or 5`
+          );
+        }
+      }
+      if (player.status === 'finished') {
         if (player.hand.length !== 4) {
-          errors.push(`Player ${player.name} (${player.id}) has ${player.hand.length} cards, expected 4`);
+          errors.push(`Finished player ${player.name} has ${player.hand.length} cards, expected 4`);
         }
       }
     }
@@ -417,12 +406,11 @@ export function validateInvariants(state: InternalGameState): { valid: boolean; 
 
 /**
  * Generate public game state for broadcasting to all clients.
- * Never leaks private cards or opponents' secret card selections.
+ * Never leaks private cards or opponents' secret cards.
  */
 export function getPublicGameState(state: InternalGameState): PublicGameState {
   const activePlayers = getActivePlayers(state);
   const activePassingOrder = getAnticlockwisePassingOrder(activePlayers).map((p) => p.id);
-  const readyCount = activePlayers.filter((p) => p.selectedCardId !== null).length;
 
   const publicPlayers: PublicPlayer[] = state.players.map((p) => ({
     id: p.id,
@@ -433,7 +421,6 @@ export function getPublicGameState(state: InternalGameState): PublicGameState {
     rank: p.rank,
     completedItem: p.completedItem,
     cardCount: p.hand.length,
-    hasSelectedCard: p.selectedCardId !== null,
     isConnected: p.isConnected
   }));
 
@@ -444,19 +431,21 @@ export function getPublicGameState(state: InternalGameState): PublicGameState {
     players: publicPlayers,
     theme: state.theme,
     hostId: state.hostId,
+    turnPlayerId: state.turnPlayerId,
+    starterPlayerId: state.starterPlayerId,
+    turnDeadline: state.turnDeadline,
+    turnTimerSeconds: state.turnTimerSeconds,
     activePassingOrder,
     lastPass: state.lastPass,
     winners: state.winners,
-    readyCount,
     totalActivePlayers: activePlayers.length,
-    allReady: activePlayers.length > 0 && readyCount === activePlayers.length,
     updatedAt: state.updatedAt
   };
 }
 
 /**
  * Generate authorized private player state for a specific player.
- * Contains only that player's cards and targeted passing indicators.
+ * Contains only that player's cards, turn status, and neighbor hints.
  */
 export function getPrivatePlayerState(
   state: InternalGameState,
@@ -477,14 +466,13 @@ export function getPrivatePlayerState(
     rank: player.rank,
     completedItem: player.completedItem,
     cardCount: player.hand.length,
-    hasSelectedCard: player.selectedCardId !== null,
     isConnected: player.isConnected
   };
 
   return {
     player: publicPlayer,
     cards: player.hand,
-    selectedCardId: player.selectedCardId,
+    isYourTurn: state.turnPlayerId === playerId && state.phase === 'PLAYING',
     passingTo: target
       ? {
           id: target.id,

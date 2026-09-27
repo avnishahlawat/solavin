@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Sparkles, Check, Plus, AlertCircle } from 'lucide-react';
+import { X, Sparkles, Check, Clock, AlertCircle } from 'lucide-react';
 import { PRESET_THEMES } from '@solavin/shared';
 
 interface CreateGameModalProps {
@@ -8,7 +8,8 @@ interface CreateGameModalProps {
   onCreate: (
     playerName: string,
     themeId?: string,
-    customTheme?: { name: string; items: string[] }
+    customTheme?: { name: string; items: string[] },
+    turnTimerSeconds?: number
   ) => Promise<{ success: boolean; error?: string }>;
 }
 
@@ -16,6 +17,7 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ isOpen, onClos
   const [playerName, setPlayerName] = useState(localStorage.getItem('solavin_last_name') || '');
   const [activeTab, setActiveTab] = useState<'preset' | 'custom'>('preset');
   const [selectedThemeId, setSelectedThemeId] = useState(PRESET_THEMES[0].id);
+  const [turnTimerSeconds, setTurnTimerSeconds] = useState<number>(30);
 
   // Custom theme fields
   const [customName, setCustomName] = useState('');
@@ -44,7 +46,7 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ isOpen, onClos
 
     let res;
     if (activeTab === 'preset') {
-      res = await onCreate(trimmedName, selectedThemeId);
+      res = await onCreate(trimmedName, selectedThemeId, undefined, turnTimerSeconds);
     } else {
       const items = [customItem1.trim(), customItem2.trim(), customItem3.trim(), customItem4.trim()];
       if (items.some((i) => !i)) {
@@ -58,10 +60,15 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ isOpen, onClos
         setErrorMsg('All 4 custom items must be unique');
         return;
       }
-      res = await onCreate(trimmedName, undefined, {
-        name: customName.trim() || 'Custom Theme',
-        items
-      });
+      res = await onCreate(
+        trimmedName,
+        undefined,
+        {
+          name: customName.trim() || 'Custom Theme',
+          items
+        },
+        turnTimerSeconds
+      );
     }
 
     setIsLoading(false);
@@ -91,7 +98,7 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ isOpen, onClos
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-          <div className="px-6 py-5 overflow-y-auto space-y-6">
+          <div className="px-6 py-5 overflow-y-auto space-y-5">
             {errorMsg && (
               <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-2 text-rose-300 text-xs">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -115,12 +122,45 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ isOpen, onClos
               />
             </div>
 
+            {/* Turn Timer Selector */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Turn Timer</span>
+              </label>
+              <div className="grid grid-cols-5 gap-2">
+                {[
+                  { label: '15s', val: 15 },
+                  { label: '30s (Default)', val: 30 },
+                  { label: '45s', val: 45 },
+                  { label: '1 Min', val: 60 },
+                  { label: 'No Timer', val: 0 }
+                ].map((t) => (
+                  <button
+                    key={t.val}
+                    type="button"
+                    onClick={() => setTurnTimerSeconds(t.val)}
+                    className={`py-2 px-1 text-center rounded-lg border text-xs font-semibold transition-all ${
+                      turnTimerSeconds === t.val
+                        ? 'bg-cyan-950/40 border-cyan-400 text-cyan-300 ring-1 ring-cyan-400'
+                        : 'bg-surface-200 border-card-border text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Time allowed for each player to inspect their hand and pass a card.
+              </p>
+            </div>
+
             {/* Theme Tabs */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
                 Card Theme
               </label>
-              <div className="flex rounded-xl bg-surface-200 p-1 border border-card-border mb-4">
+              <div className="flex rounded-xl bg-surface-200 p-1 border border-card-border mb-3">
                 <button
                   type="button"
                   onClick={() => setActiveTab('preset')}
@@ -145,9 +185,8 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ isOpen, onClos
                 </button>
               </div>
 
-              {/* Preset selection grid */}
               {activeTab === 'preset' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-52 overflow-y-auto pr-1">
                   {PRESET_THEMES.map((theme) => {
                     const isSelected = selectedThemeId === theme.id;
                     return (
@@ -176,7 +215,6 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ isOpen, onClos
                   })}
                 </div>
               ) : (
-                /* Custom Theme Form */
                 <div className="space-y-3 bg-surface-200/60 p-4 rounded-xl border border-card-border">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-400 mb-1">
@@ -237,7 +275,7 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ isOpen, onClos
 
           {/* Footer */}
           <div className="px-6 py-4 border-t border-card-border bg-surface-200/50 flex items-center justify-between">
-            <span className="text-xs text-slate-400">Generates 16 cards</span>
+            <span className="text-xs text-slate-400">16 cards total</span>
             <div className="flex gap-2">
               <button
                 type="button"

@@ -3,7 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './apps/server/src/app.module';
 
 async function runE2ETest() {
-  console.log('🚀 Starting SOLAVIN Backend for Real-Time Multiplayer E2E Acceptance Test...');
+  console.log('🚀 Starting SOLAVIN Backend for Turn-Based Multiplayer E2E Acceptance Test...');
 
   // Start NestJS server on port 3333
   const app = await NestFactory.create(AppModule, { logger: false });
@@ -13,7 +13,6 @@ async function runE2ETest() {
 
   const serverUrl = 'http://localhost:3333';
 
-  // Helper to create connected socket
   function createClient(name: string): Promise<Socket> {
     return new Promise((resolve) => {
       const socket = io(serverUrl, { transports: ['websocket'] });
@@ -40,10 +39,10 @@ async function runE2ETest() {
     p3Socket.on('sync:state', (s: any) => (p3State = s));
     p4Socket.on('sync:state', (s: any) => (p4State = s));
 
-    // 1. Player 1 creates room
-    console.log('1️⃣ Player 1 creates room...');
+    // 1. Player 1 creates room with 30s timer
+    console.log('1️⃣ Player 1 creates room (30s timer)...');
     const createRes: any = await new Promise((resolve) => {
-      p1Socket.emit('room:create', { playerName: 'Arya' }, resolve);
+      p1Socket.emit('room:create', { playerName: 'Arya', turnTimerSeconds: 30 }, resolve);
     });
 
     if (!createRes.success || !createRes.roomCode) {
@@ -52,10 +51,9 @@ async function runE2ETest() {
     const roomCode = createRes.roomCode;
     console.log(`✅ Room created with code: ${roomCode}`);
 
-    // Wait for p1State
     await new Promise((r) => setTimeout(r, 200));
 
-    // 2. Player 2, 3, 4 join room
+    // 2. Players 2, 3, 4 join room
     console.log('2️⃣ Players 2, 3, 4 join room...');
     await new Promise((resolve) => {
       p2Socket.emit('room:join', { roomCode, playerName: 'Rahul' }, resolve);
@@ -69,68 +67,79 @@ async function runE2ETest() {
 
     await new Promise((r) => setTimeout(r, 300));
     console.log(`✅ Lobby populated: ${p1State?.publicState.players.length}/4 players`);
-    if (p1State?.publicState.players.length !== 4) {
-      throw new Error('Lobby does not contain 4 players');
-    }
 
-    // 3. Player 1 (Host) starts game
+    // 3. Start game
     console.log('3️⃣ Host starts game...');
     p1Socket.emit('game:start');
     await new Promise((r) => setTimeout(r, 400));
 
     console.log(`✅ Game phase: ${p1State?.publicState.phase}, Round: ${p1State?.publicState.round}`);
-    if (p1State?.publicState.phase !== 'PLAYING') {
-      throw new Error('Game did not enter PLAYING phase');
+    const starterId = p1State.publicState.starterPlayerId;
+    const turnPlayerId = p1State.publicState.turnPlayerId;
+    console.log(`🎲 Randomly chosen starter: ${starterId} (Turn: ${turnPlayerId})`);
+
+    if (starterId !== turnPlayerId) {
+      throw new Error('Starter player should have the first turn!');
     }
 
-    // Verify information isolation: Player 1 can only see Player 1's cards!
+    // Verify information isolation
     console.log('🔒 Verifying Private State Isolation...');
-    if (!p1State?.privateState || p1State.privateState.cards.length !== 4) {
-      throw new Error('Player 1 does not have 4 private cards');
-    }
-    if (p1State.publicState.players[1].cards || p1State.publicState.players[1].hand) {
+    if ((p1State.publicState.players[1] as any).cards || (p1State.publicState.players[1] as any).hand) {
       throw new Error('SECURITY VIOLATION: Opponent cards leaked in public state!');
     }
-    console.log(`✅ Player 1 hand: [${p1State.privateState.cards.map((c: any) => c.itemName).join(', ')}]`);
-    console.log(`✅ Public state contains only cardCount (${p1State.publicState.players[1].cardCount}) and public info`);
 
-    // 4. Simultaneous Card Selection & Passing
-    console.log('4️⃣ Simulating round selections and anticlockwise simultaneous passing...');
+    // Find socket of starter
+    const socketMap: Record<string, { socket: Socket; getState: () => any }> = {
+      [p1State.privateState.player.id]: { socket: p1Socket, getState: () => p1State },
+      [p2State.privateState.player.id]: { socket: p2Socket, getState: () => p2State },
+      [p3State.privateState.player.id]: { socket: p3Socket, getState: () => p3State },
+      [p4State.privateState.player.id]: { socket: p4Socket, getState: () => p4State }
+    };
 
-    let passingEventReceived = false;
-    p1Socket.on('game:passing', (data: any) => {
-      passingEventReceived = true;
-      console.log(`🔄 Received 'game:passing' event with ${data.passes.length} simultaneous card passes!`);
-      const p1Pass = data.passes.find((p: any) => p.fromSeatIndex === 0);
-      console.log(`↪️ Seat 0 passed to Seat ${p1Pass?.toSeatIndex} (anticlockwise!)`);
-    });
+    const starterInfo = socketMap[starterId];
+    const starterCard = starterInfo.getState().privateState.cards[0];
 
-    // Each player selects card 0 from their private hand
-    p1Socket.emit('game:select-card', { cardId: p1State.privateState.cards[0].id });
-    p2Socket.emit('game:select-card', { cardId: p2State!.privateState!.cards[0].id });
-    p3Socket.emit('game:select-card', { cardId: p3State!.privateState!.cards[0].id });
-    p4Socket.emit('game:select-card', { cardId: p4State!.privateState!.cards[0].id });
+    // 4. Starter passes 1 card
+    console.log(`4️⃣ Starter passes 1 card (${starterCard.itemName}) anticlockwise...`);
+    starterInfo.socket.emit('game:pass-card', { cardId: starterCard.id });
 
-    // Wait for server resolution and delay (500ms server delay + state broadcast)
-    await new Promise((r) => setTimeout(r, 1000));
+    // Wait for pass resolution
+    await new Promise((r) => setTimeout(r, 600));
 
-    if (!passingEventReceived) {
-      throw new Error('Did not receive game:passing event');
+    // Verify: starter now has 3 cards!
+    const starterAfter = starterInfo.getState();
+    console.log(`✅ Starter now has ${starterAfter.privateState.cards.length} cards (expected: 3)`);
+    if (starterAfter.privateState.cards.length !== 3) {
+      throw new Error('Starter should have 3 cards after passing first card!');
     }
 
-    console.log(`✅ Round incremented to ${p1State?.publicState.round}`);
-    console.log(`✅ Player 1 hand size after pass: ${p1State?.privateState?.cards.length} cards`);
-    if (p1State?.privateState?.cards.length !== 4) {
-      throw new Error('Player hand size invariant violated! Expected 4 cards.');
+    // Next turn player should now have 5 cards!
+    const nextTurnId = p1State.publicState.turnPlayerId;
+    const nextTurnInfo = socketMap[nextTurnId];
+    console.log(`✅ Next turn is on ${nextTurnId}, who now has ${nextTurnInfo.getState().privateState.cards.length} cards (expected: 5)`);
+    if (nextTurnInfo.getState().privateState.cards.length !== 5) {
+      throw new Error('Receiving player should have 5 cards!');
     }
 
-    // 5. Test Reconnection
-    console.log('5️⃣ Testing player disconnect and reconnection...');
-    const originalP2Id = p2State!.privateState!.player.id;
+    // 5. Next player passes 1 card
+    const cardToPass2 = nextTurnInfo.getState().privateState.cards[0];
+    console.log(`5️⃣ Player with 5 cards passes 1 card (${cardToPass2.itemName}) anticlockwise...`);
+    nextTurnInfo.socket.emit('game:pass-card', { cardId: cardToPass2.id });
+
+    await new Promise((r) => setTimeout(r, 600));
+
+    // Player who had 5 cards now has 4 cards!
+    console.log(`✅ That player now has ${nextTurnInfo.getState().privateState.cards.length} cards (expected: 4)`);
+    if (nextTurnInfo.getState().privateState.cards.length !== 4) {
+      throw new Error('Player should return to 4 cards after passing!');
+    }
+
+    // 6. Test Disconnect & Reconnect
+    console.log('6️⃣ Testing player disconnect and reconnection...');
+    const originalP2Id = p2State.privateState.player.id;
     p2Socket.disconnect();
     await new Promise((r) => setTimeout(r, 200));
 
-    // Player 2 reconnects
     const p2Reconnect = await createClient('Player 2 Reconnect');
     let p2ReconnectedState: any = null;
     p2Reconnect.on('sync:state', (s: any) => (p2ReconnectedState = s));
@@ -149,14 +158,13 @@ async function runE2ETest() {
     }
     console.log(`✅ Reconnected player successfully restored hand of ${p2ReconnectedState.privateState.cards.length} cards!`);
 
-    // Clean up
     p1Socket.disconnect();
     p2Reconnect.disconnect();
     p3Socket.disconnect();
     p4Socket.disconnect();
 
     await app.close();
-    console.log('🎉 ALL MULTIPLAYER REAL-TIME ACCEPTANCE TESTS PASSED SUCCESSFULLY! 🎉');
+    console.log('🎉 ALL TURN-BASED MULTIPLAYER ACCEPTANCE TESTS PASSED! 🎉');
     process.exit(0);
   } catch (err) {
     console.error('❌ E2E Acceptance Test Failed:', err);

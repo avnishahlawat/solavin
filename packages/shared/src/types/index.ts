@@ -42,7 +42,6 @@ export interface PublicPlayer {
   rank?: 1 | 2 | 3 | 4;
   completedItem?: string;
   cardCount: number;
-  hasSelectedCard: boolean;
   isConnected: boolean;
 }
 
@@ -51,6 +50,7 @@ export interface PassRecord {
   toPlayerId: string;
   fromSeatIndex: number;
   toSeatIndex: number;
+  cardId?: string;
 }
 
 export interface WinnerResult {
@@ -69,19 +69,21 @@ export interface PublicGameState {
   players: PublicPlayer[];
   theme: Theme;
   hostId: string;
+  turnPlayerId: string | null;
+  starterPlayerId: string | null;
+  turnDeadline: number | null; // Timestamp (ms) when current turn expires
+  turnTimerSeconds: number;    // e.g. 30, 60, or 0 (no timer)
   activePassingOrder: string[]; // List of playerIds in anticlockwise order
-  lastPass?: PassRecord[];
+  lastPass?: PassRecord;
   winners: WinnerResult[];
-  readyCount: number;
   totalActivePlayers: number;
-  allReady: boolean;
   updatedAt: number;
 }
 
 export interface PrivatePlayerState {
   player: PublicPlayer;
   cards: Card[];
-  selectedCardId?: string | null;
+  isYourTurn: boolean;
   passingTo?: {
     id: string;
     name: string;
@@ -102,7 +104,12 @@ export interface FullRoomState {
 // Client to Server Events
 export interface ClientToServerEvents {
   'room:create': (
-    payload: { playerName: string; themeId?: string; customTheme?: { name: string; items: string[] } },
+    payload: {
+      playerName: string;
+      themeId?: string;
+      customTheme?: { name: string; items: string[] };
+      turnTimerSeconds?: number;
+    },
     callback?: (response: { success: boolean; roomCode?: string; playerId?: string; error?: string }) => void
   ) => void;
   'room:join': (
@@ -110,16 +117,25 @@ export interface ClientToServerEvents {
     callback?: (response: { success: boolean; roomCode?: string; playerId?: string; error?: string }) => void
   ) => void;
   'room:leave': () => void;
-  'room:update-theme': (payload: { themeId?: string; customTheme?: { name: string; items: string[] } }) => void;
+  'room:update-settings': (payload: {
+    themeId?: string;
+    customTheme?: { name: string; items: string[] };
+    turnTimerSeconds?: number;
+  }) => void;
   'game:start': () => void;
-  'game:select-card': (payload: { cardId: string }) => void;
-  'game:restart': (payload?: { sameTheme?: boolean; themeId?: string; customTheme?: { name: string; items: string[] } }) => void;
+  'game:pass-card': (payload: { cardId: string }) => void;
+  'game:restart': (payload?: {
+    sameTheme?: boolean;
+    themeId?: string;
+    customTheme?: { name: string; items: string[] };
+    turnTimerSeconds?: number;
+  }) => void;
 }
 
 // Server to Client Events
 export interface ServerToClientEvents {
   'sync:state': (payload: FullRoomState) => void;
-  'game:passing': (payload: { passes: PassRecord[]; nextRound: number }) => void;
+  'game:passing': (payload: { pass: PassRecord; nextTurnPlayerId: string }) => void;
   'game:player-finished': (payload: WinnerResult) => void;
   'game:complete': (payload: { winners: WinnerResult[] }) => void;
   'notification': (payload: { type: 'info' | 'success' | 'warning' | 'error'; message: string }) => void;

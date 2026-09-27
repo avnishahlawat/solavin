@@ -23,7 +23,7 @@ export function useSocket() {
   const [publicState, setPublicState] = useState<PublicGameState | null>(null);
   const [privateState, setPrivateState] = useState<PrivatePlayerState | null>(null);
   const [isPassing, setIsPassing] = useState<boolean>(false);
-  const [lastPassRecords, setLastPassRecords] = useState<PassRecord[] | null>(null);
+  const [lastPassRecord, setLastPassRecord] = useState<PassRecord | null>(null);
   const [activeCelebration, setActiveCelebration] = useState<WinnerResult | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' | 'warning' | 'error' } | null>(null);
 
@@ -34,9 +34,7 @@ export function useSocket() {
     }, 4000);
   }, []);
 
-  // Initialize socket
   useEffect(() => {
-    // Socket URL: use env variable or default to backend port 3001 in dev
     const serverUrl =
       import.meta.env.VITE_SOCKET_URL ||
       (window.location.port === '3000'
@@ -53,7 +51,6 @@ export function useSocket() {
 
     s.on('connect', () => {
       setIsConnected(true);
-      // Check if we have an active session to restore
       const saved = localStorage.getItem(SESSION_KEY);
       if (saved) {
         try {
@@ -86,14 +83,14 @@ export function useSocket() {
       }
     });
 
-    s.on('game:passing', (data: { passes: PassRecord[]; nextRound: number }) => {
+    s.on('game:passing', (data: { pass: PassRecord; nextTurnPlayerId: string }) => {
       setIsPassing(true);
-      setLastPassRecords(data.passes);
+      setLastPassRecord(data.pass);
       sound.playCardPass();
 
       setTimeout(() => {
         setIsPassing(false);
-      }, 700);
+      }, 500);
     });
 
     s.on('game:player-finished', (winner: WinnerResult) => {
@@ -131,13 +128,14 @@ export function useSocket() {
     (
       playerName: string,
       themeId?: string,
-      customTheme?: { name: string; items: string[] }
+      customTheme?: { name: string; items: string[] },
+      turnTimerSeconds: number = 30
     ): Promise<{ success: boolean; error?: string }> => {
       return new Promise((resolve) => {
         if (!socketRef.current) return resolve({ success: false, error: 'Socket not connected' });
         socketRef.current.emit(
           'room:create',
-          { playerName, themeId, customTheme },
+          { playerName, themeId, customTheme, turnTimerSeconds },
           (res: { success: boolean; roomCode?: string; playerId?: string; error?: string }) => {
             if (res.success && res.roomCode && res.playerId) {
               localStorage.setItem(
@@ -181,10 +179,14 @@ export function useSocket() {
     [showToast]
   );
 
-  const updateTheme = useCallback(
-    (themeId?: string, customTheme?: { name: string; items: string[] }) => {
+  const updateSettings = useCallback(
+    (payload: {
+      themeId?: string;
+      customTheme?: { name: string; items: string[] };
+      turnTimerSeconds?: number;
+    }) => {
       if (!socketRef.current) return;
-      socketRef.current.emit('room:update-theme', { themeId, customTheme });
+      socketRef.current.emit('room:update-settings', payload);
     },
     []
   );
@@ -194,14 +196,19 @@ export function useSocket() {
     socketRef.current.emit('game:start');
   }, []);
 
-  const selectCard = useCallback((cardId: string) => {
+  const passCard = useCallback((cardId: string) => {
     if (!socketRef.current) return;
     sound.playCardSelect();
-    socketRef.current.emit('game:select-card', { cardId });
+    socketRef.current.emit('game:pass-card', { cardId });
   }, []);
 
   const restartGame = useCallback(
-    (options?: { sameTheme?: boolean; themeId?: string; customTheme?: { name: string; items: string[] } }) => {
+    (options?: {
+      sameTheme?: boolean;
+      themeId?: string;
+      customTheme?: { name: string; items: string[] };
+      turnTimerSeconds?: number;
+    }) => {
       if (!socketRef.current) return;
       socketRef.current.emit('game:restart', options);
     },
@@ -222,14 +229,14 @@ export function useSocket() {
     publicState,
     privateState,
     isPassing,
-    lastPassRecords,
+    lastPassRecord,
     activeCelebration,
     toast,
     createRoom,
     joinRoom,
-    updateTheme,
+    updateSettings,
     startGame,
-    selectCard,
+    passCard,
     restartGame,
     leaveRoom
   };

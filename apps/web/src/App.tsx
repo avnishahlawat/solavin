@@ -20,9 +20,9 @@ export function App() {
     toast,
     createRoom,
     joinRoom,
-    updateTheme,
+    updateSettings,
     startGame,
-    selectCard,
+    passCard,
     restartGame,
     leaveRoom
   } = useSocket();
@@ -98,6 +98,7 @@ export function App() {
             currentPlayerId={currentPlayerId}
             onStartGame={startGame}
             onChangeTheme={() => setIsCreateOpen(true)}
+            onUpdateTimer={(sec) => updateSettings({ turnTimerSeconds: sec })}
           />
         ) : (
           /* Active Game Table (or Game Complete) */
@@ -105,7 +106,7 @@ export function App() {
             publicState={publicState}
             privateState={privateState || undefined}
             isPassing={isPassing}
-            onSelectCard={selectCard}
+            onPassCard={passCard}
           />
         )}
       </main>
@@ -125,13 +126,12 @@ export function App() {
       <CreateGameModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        onCreate={async (playerName, themeId, customTheme) => {
+        onCreate={async (playerName, themeId, customTheme, turnTimerSeconds) => {
           if (publicState && isHost) {
-            // Updating existing room theme
-            updateTheme(themeId, customTheme);
+            updateSettings({ themeId, customTheme, turnTimerSeconds });
             return { success: true };
           }
-          return await createRoom(playerName, themeId, customTheme);
+          return await createRoom(playerName, themeId, customTheme, turnTimerSeconds);
         }}
       />
 
@@ -152,7 +152,7 @@ export function App() {
           <span>SOLAVIN — Modern 16 Parchi Card Game</span>
         </div>
         <div className="flex items-center gap-4 mt-1 sm:mt-0">
-          <span>Server-Authoritative Real-Time Engine</span>
+          <span>Turn-Based Real-Time Engine</span>
           <span>•</span>
           <button
             onClick={() => setIsHelpOpen(true)}

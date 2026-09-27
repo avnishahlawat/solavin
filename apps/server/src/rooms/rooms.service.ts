@@ -15,7 +15,6 @@ const CODE_CHARS = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 export class RoomsService {
   private readonly logger = new Logger(RoomsService.name);
   private rooms: Map<string, InternalGameState> = new Map();
-  // Map socketId -> { roomCode, playerId }
   private socketMap: Map<string, { roomCode: string; playerId: string }> = new Map();
 
   generateRoomCode(): string {
@@ -34,7 +33,8 @@ export class RoomsService {
     playerName: string,
     socketId: string,
     themeId?: string,
-    customThemeData?: { name: string; items: string[] }
+    customThemeData?: { name: string; items: string[] },
+    turnTimerSeconds: number = 30
   ): { room: InternalGameState; player: InternalPlayer } {
     const trimmedName = playerName.trim();
     if (!trimmedName) {
@@ -59,18 +59,17 @@ export class RoomsService {
       seatIndex: 0,
       status: 'active',
       hand: [],
-      selectedCardId: null,
       isConnected: true,
       socketId
     };
 
-    const newGame = createGame(roomCode, playerId, selectedTheme);
+    const newGame = createGame(roomCode, playerId, selectedTheme, turnTimerSeconds);
     newGame.players = [hostPlayer];
 
     this.rooms.set(roomCode, newGame);
     this.socketMap.set(socketId, { roomCode, playerId });
 
-    this.logger.log(`Room created: ${roomCode} by ${trimmedName} (${playerId})`);
+    this.logger.log(`Room created: ${roomCode} by ${trimmedName} (timer: ${turnTimerSeconds}s)`);
     return { room: newGame, player: hostPlayer };
   }
 
@@ -137,7 +136,6 @@ export class RoomsService {
       seatIndex,
       status: 'active',
       hand: [],
-      selectedCardId: null,
       isConnected: true,
       socketId
     };
@@ -149,21 +147,22 @@ export class RoomsService {
     return { room, player: newPlayer, isReconnecting: false };
   }
 
-  updateTheme(
+  updateSettings(
     roomCode: string,
     hostPlayerId: string,
     themeId?: string,
-    customThemeData?: { name: string; items: string[] }
+    customThemeData?: { name: string; items: string[] },
+    turnTimerSeconds?: number
   ): InternalGameState {
     const room = this.rooms.get(roomCode);
     if (!room) throw new NotFoundException('Room not found');
 
     if (room.hostId !== hostPlayerId) {
-      throw new BadRequestException('Only the room host can change the theme');
+      throw new BadRequestException('Only the room host can change the settings');
     }
 
     if (room.phase !== 'LOBBY') {
-      throw new BadRequestException('Cannot change theme while game is active');
+      throw new BadRequestException('Cannot change settings while game is active');
     }
 
     if (customThemeData && customThemeData.items?.length === 4) {
@@ -171,6 +170,10 @@ export class RoomsService {
     } else if (themeId) {
       const found = PRESET_THEMES.find((t) => t.id === themeId);
       if (found) room.theme = found;
+    }
+
+    if (turnTimerSeconds !== undefined && turnTimerSeconds >= 0) {
+      room.turnTimerSeconds = turnTimerSeconds;
     }
 
     room.updatedAt = Date.now();
@@ -193,9 +196,7 @@ export class RoomsService {
     player.isConnected = false;
     this.logger.log(`Player ${player.name} (${playerId}) disconnected from room ${roomCode}`);
 
-    // If still in lobby and player disconnects, handle host migration or removal
     if (room.phase === 'LOBBY') {
-      // Remove player from lobby
       room.players = room.players.filter((p) => p.id !== playerId);
       if (room.players.length === 0) {
         this.rooms.delete(roomCode);
@@ -203,14 +204,12 @@ export class RoomsService {
         return {};
       }
 
-      // If host left, migrate host to first remaining connected player
       if (player.isHost) {
         room.players[0].isHost = true;
         room.hostId = room.players[0].id;
         this.logger.log(`Host migrated to ${room.players[0].name} in room ${roomCode}`);
       }
     } else {
-      // In active game: if host disconnected, assign host flag to an active connected player
       if (player.isHost) {
         const nextHost = room.players.find((p) => p.isConnected && p.id !== playerId);
         if (nextHost) {

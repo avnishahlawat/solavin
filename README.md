@@ -14,29 +14,41 @@
 
 ## 🌟 Game Overview
 
-**SOLAVIN** brings the classic four-of-a-kind card game to the modern web. Built with a **TypeScript-first monorepo**, it features authoritative server-side mechanics, zero card leaks to browser inspectors, instant room sharing via 6-character codes, invite links, and QR codes.
+**SOLAVIN** brings the authentic turn-based gameplay of traditional 16 Parchi to the modern web. Built with a **TypeScript-first monorepo**, it features authoritative server-side mechanics, zero card leaks to browser inspectors, instant room sharing via 6-character codes, invite links, and QR codes.
 
-### Core Game Flow
+### Core Turn-Based Flow
 
 ```mermaid
 flowchart TD
-    A["Host Creates Game"] --> B["Select or Create Theme"]
-    B --> C["Generate Room Code (e.g. 98XPFX)"]
-    C --> D["Share Link / QR Code"]
-    D --> E["4 Players Join Room"]
-    E --> F["Host Starts Game"]
-    F --> G["Server Authoritatively Deals 16 Cards (4 each)"]
-    G --> H["Each Player Secretly Selects 1 Card"]
-    H --> I{"All 4 Active Players Ready?"}
-    I -- No --> H
-    I -- Yes --> J["Simultaneous Anticlockwise Pass"]
-    J --> K["Check for 4 Matching Cards"]
-    K -- Set Complete --> L["Assign Rank: 1st, 2nd, 3rd, 4th"]
-    L --> M{"3 or 4 Finished?"}
-    M -- No --> H
-    M -- Yes --> N["Game Complete & Final Standings"]
-    K -- Incomplete --> H
+    A["Host Creates Game & Configures Turn Timer (e.g. 30s, 1m, or Off)"] --> B["Select or Create Theme"]
+    B --> C["Generate Room Code (e.g. LTKGTM)"]
+    C --> D["4 Players Join Room"]
+    D --> E["Host Starts Game"]
+    E --> F["Server Deals 16 Cards (4 to each of the 4 players)"]
+    F --> G["🎲 Server Randomly Picks 1 Player as STARTER"]
+    G --> H["Starter Discards 1 Card First (Starter: 4 → 3 Cards)"]
+    H --> I["Anticlockwise Neighbor Receives Card (Neighbor: 4 → 5 Cards)"]
+    I --> J["Turn Timer Starts for Player with 5 Cards (e.g. 30s)"]
+    J --> K["Player with 5 Cards Chooses & Passes 1 Card (5 → 4 Cards)"]
+    K --> L["Check if Passing Player has 4 Matching Cards"]
+    L -- Set Complete --> M["Award Rank: 1st, 2nd, 3rd, 4th"]
+    L -- Incomplete --> N["Next Anticlockwise Neighbor Receives Card"]
+    N --> J
 ```
+
+---
+
+## ⏱️ Turn Timer & Starter Mechanics
+
+1. **Random Starter**: At game start, one player is chosen randomly as the **Starter** (`starterPlayerId`). The Starter has the first turn to discard a card anticlockwise.
+2. **3 vs 5 Card Dynamic**:
+   * After the Starter passes their first card, the Starter has **3 cards**.
+   * The next player in the anticlockwise direction receives the card and now has **5 cards**.
+   * The player with 5 cards has their turn timer ticking (configurable: 15s, 30s, 45s, 60s, or No Timer).
+   * They choose which card to keep and which to pass anticlockwise. Once passed, they return to **4 cards**, and the next player receives the 5th card!
+   * When cards make a full round back to the starter, the starter receives a card and returns to 4 cards.
+3. **Turn Timeout Auto-Pass**: If a player's timer expires before choosing, the server authoritatively auto-discards a non-matching card to keep the game flowing seamlessly.
+4. **Win Condition**: The first player to assemble **4 matching cards** of the same item wins 1st Place! The remaining players continue circulating cards until 2nd, 3rd, and 4th places are decided.
 
 ---
 
@@ -53,8 +65,8 @@ graph TB
 
     subgraph Server["NestJS Authoritative Server"]
         Gateway["Socket.IO Gateway\n/socket.io"]
-        RoomsSvc["Rooms Service\n(Codes, Seats, Host Migration)"]
-        GamesSvc["Games Service\n(Turns, State Machine)"]
+        RoomsSvc["Rooms Service\n(Codes, Seats, Timer Settings)"]
+        GamesSvc["Games Service\n(Turns, State Machine, Auto-pass)"]
         Engine["Pure Game Engine\n(@solavin/shared)"]
         Prisma["Prisma ORM"]
     end
@@ -77,35 +89,24 @@ graph TB
 
 ---
 
-## 🛡️ Critical Invariants & Security Principles
-
-1. **Zero Information Leakage**: The server authoritatively manages all 16 cards. Opponent hands and secret selections are **never** transmitted over the network until set completion.
-2. **Anticlockwise Simultaneous Passing**: Card choices remain locked and secret until all active players have chosen. Resolution exchanges cards simultaneously across the active seat ring:
-   $$\text{Seat } 0 \to \text{Seat } 3 \to \text{Seat } 2 \to \text{Seat } 1 \to \text{Seat } 0$$
-3. **Card Invariant**: The total number of cards in circulation is strictly 16 at all times ($4 \text{ items} \times 4 \text{ copies}$). Each active player always holds exactly 4 cards.
-4. **Dynamic Active Ring**: When a player completes 4 matching cards, they win their permanent rank (1st, 2nd, 3rd) and transition to spectator mode. The active passing order automatically skips finished players without disrupting card ownership.
-5. **Session Resilience**: Players can refresh the browser or switch Wi-Fi networks; session IDs in `localStorage` enable immediate reconnect without losing seat or hand state.
-
----
-
 ## 📂 Project Structure
 
 ```text
 solavin/
 ├── apps/
-│   ├── web/                     # React + Vite + Tailwind CSS + Lucide
+│   ├── web/                     # React 18 + Vite + Tailwind CSS + Lucide
 │   │   ├── src/
-│   │   │   ├── components/      # UI: GameTable, Cards, Lobby, Modals
-│   │   │   ├── hooks/           # useSocket (Multiplayer state & actions)
+│   │   │   ├── components/      # UI: GameTable, Cards, Lobby, Modals, Header
+│   │   │   ├── hooks/           # useSocket (Session resilience & Socket.IO client)
 │   │   │   ├── lib/             # Web Audio API sound synthesizer
-│   │   │   └── App.tsx          # Root view orchestrator
+│   │   │   └── App.tsx          # Main orchestrator
 │   │   └── package.json
 │   │
-│   └── server/                  # NestJS + Socket.IO + Prisma
+│   └── server/                  # NestJS + Socket.IO + Prisma + PostgreSQL
 │       ├── src/
-│       │   ├── rooms/           # Room code generation, host migration
-│       │   ├── games/           # Game lifecycle, round resolution
-│       │   ├── websocket/       # Gateway broadcasting private/public states
+│       │   ├── rooms/           # Room code generation, host migration, seat assignments
+│       │   ├── games/           # Authoritative state machine & turn timer auto-pass
+│       │   ├── websocket/       # Gateway broadcasting private hands & public state
 │       │   ├── prisma/          # Optional PostgreSQL persistence
 │       │   └── main.ts          # Server bootstrap
 │       └── package.json
@@ -114,44 +115,20 @@ solavin/
 │   └── shared/                  # Pure TypeScript Game Engine & Types
 │       ├── src/
 │       │   ├── constants/       # 15+ Preset themes & custom theme generator
-│       │   ├── engine/          # Pure shuffle, deal, pass & win detection
-│       │   ├── types/           # Shared state & WebSocket event contracts
+│       │   ├── engine/          # Authoritative turn passing, deal & win detection
+│       │   ├── types/           # Shared types & Socket.IO contracts
 │       │   └── index.ts
 │       └── package.json
 │
-├── docker-compose.yml           # Production-ready container orchestration
+├── docker-compose.yml           # Multi-container orchestration (Postgres, Server, Web)
 ├── .env.example                 # Configuration template
 ├── test-e2e.ts                  # Automated 4-player WebSocket acceptance test
-└── README.md
+└── README.md                    # Complete documentation & deployment guide
 ```
 
 ---
 
-## 🎨 Themes Included
-
-Hosts can pick from over 15 rich preset themes or create custom sets:
-* 🌌 **Blockbuster Cinema**: Interstellar, Avengers, Dune, Inception
-* ⚽ **Football Legends**: Messi, Ronaldo, Mbappé, Haaland
-* 🏏 **Cricket Giants**: Virat Kohli, MS Dhoni, Rohit Sharma, Jasprit Bumrah
-* 🗽 **Global Metropolises**: Tokyo, Paris, New York, London
-* 🗺️ **Nations of the World**: Japan, Brazil, India, Switzerland
-* 🏛️ **World Wonders**: Taj Mahal, Giza Pyramids, Colosseum, Eiffel Tower
-* ⚛️ **Scientific Pioneers**: Einstein, Newton, Curie, Tesla
-* 🎬 **Hollywood Icons**: DiCaprio, Bale, Pitt, Cruise
-* 🍏 **Tech Giants**: Apple, Google, Microsoft, NVIDIA
-* 🦁 **Wild Kingdom**: Lion, Eagle, Tiger, Whale
-* 🍕 **Culinary Delights**: Pizza, Sushi, Biryani, Burger
-* 🏎️ **Supercars**: Ferrari, Lamborghini, Porsche, Bugatti
-* 🦸 **Superheroes**: Batman, Spider-Man, Superman, Iron Man
-* 🛠️ **Custom Theme**: Enter any 4 distinct items; SOLAVIN automatically generates the 16-card deck!
-
----
-
 ## 🚀 Quick Start (Local Development)
-
-### Prerequisites
-* **Node.js** >= 20.x
-* **npm** >= 10.x
 
 ### 1. Install Dependencies
 ```bash
@@ -168,7 +145,7 @@ npm run build --workspace=@solavin/shared
 # Pure game engine unit tests
 node --test packages/shared/dist/engine/engine.spec.js
 
-# Real-time 4-player Socket.IO E2E acceptance test
+# Real-time 4-player Socket.IO turn-based E2E acceptance test
 npx ts-node -r tsconfig-paths/register test-e2e.ts
 ```
 
@@ -189,39 +166,12 @@ Open `http://localhost:3000` in multiple browser windows or separate devices on 
 
 ## 🐳 Running with Docker Compose
 
-Run the entire stack with PostgreSQL:
-
 ```bash
 docker compose up --build
 ```
 * **Frontend**: `http://localhost:3000`
 * **Backend**: `http://localhost:3001`
 * **PostgreSQL**: `localhost:5432`
-
----
-
-## 🚢 Deployment Guide
-
-### Frontend (e.g. Vercel)
-1. Point build to `apps/web`
-2. Build command: `npm run build --workspace=@solavin/web`
-3. Output directory: `apps/web/dist`
-4. Set environment variables:
-   * `VITE_SOCKET_URL=https://your-backend-service.onrender.com`
-
-### Backend (e.g. Render / Railway / Fly.io)
-1. Build command:
-   ```bash
-   npm run build --workspace=@solavin/shared && npm run prisma:generate --workspace=@solavin/server && npm run build --workspace=@solavin/server
-   ```
-2. Start command:
-   ```bash
-   node apps/server/dist/main.js
-   ```
-3. Environment variables:
-   * `PORT=3001`
-   * `CORS_ORIGIN=*`
-   * `DATABASE_URL=postgresql://user:password@neon-or-supabase/db` (optional)
 
 ---
 

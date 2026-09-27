@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Layers, RotateCcw, Trophy, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { X, Layers, RotateCcw, Trophy, Clock, Dice5 } from 'lucide-react';
 
 interface HowToPlayModalProps {
   isOpen: boolean;
@@ -27,15 +27,13 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ isOpen, onClose 
         </div>
 
         {/* Content */}
-        <div className="px-6 py-5 overflow-y-auto space-y-6 text-sm text-slate-300">
-          {/* Summary Box */}
+        <div className="px-6 py-5 overflow-y-auto space-y-5 text-sm text-slate-300">
           <div className="p-3.5 bg-indigo-950/30 border border-indigo-500/20 rounded-xl">
-            <p className="text-indigo-200 font-medium">
+            <p className="text-indigo-200 font-medium leading-relaxed">
               SOLAVIN is the modern 4-player multiplayer version of the traditional Indian card game <strong>16 Parchi</strong> (Four-of-a-Kind).
             </p>
           </div>
 
-          {/* Steps */}
           <div className="space-y-4">
             <div className="flex gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-surface-50 border border-card-border flex items-center justify-center font-bold text-xs text-indigo-400">
@@ -44,7 +42,7 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ isOpen, onClose 
               <div>
                 <h4 className="font-semibold text-white">4 Players & 16 Cards</h4>
                 <p className="text-slate-400 text-xs mt-0.5">
-                  The deck has exactly 4 distinct items with 4 copies each (4 × 4 = 16 cards total).
+                  The deck has exactly 4 distinct items with 4 copies each (16 cards total). Each player is dealt 4 cards at the start.
                 </p>
               </div>
             </div>
@@ -54,10 +52,16 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ isOpen, onClose 
                 2
               </span>
               <div>
-                <h4 className="font-semibold text-white">4 Cards Each</h4>
+                <h4 className="font-semibold text-white flex items-center gap-1.5">
+                  <span>Random Starter Discards First</span>
+                  <Dice5 className="w-3.5 h-3.5 text-cyan-400" />
+                </h4>
                 <p className="text-slate-400 text-xs mt-0.5">
-                  Every player starts with 4 random cards. You can only see your own cards.
+                  One player is randomly chosen to start. The Starter passes 1 card anticlockwise to the next player.
                 </p>
+                <div className="mt-1.5 p-2 bg-surface-200/80 rounded-lg border border-card-border text-xs text-cyan-300">
+                  Starter now has <strong>3 cards</strong> ➔ Next player now has <strong>5 cards</strong>!
+                </div>
               </div>
             </div>
 
@@ -66,21 +70,16 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ isOpen, onClose 
                 3
               </span>
               <div>
-                <h4 className="font-semibold text-white">Simultaneous Anticlockwise Pass</h4>
+                <h4 className="font-semibold text-white flex items-center gap-1.5">
+                  <span>Turn-by-Turn Passing & Timer</span>
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                </h4>
                 <p className="text-slate-400 text-xs mt-0.5">
-                  Each round, every active player chooses 1 card to discard. Once all players have chosen, the server swaps the cards simultaneously in an anticlockwise circle!
+                  The player holding 5 cards has their turn timer ticking (e.g. 30s or 1 min). They inspect their 5 cards, choose 1 card, and pass it anticlockwise!
                 </p>
-                <div className="mt-2 p-2 bg-surface-200/80 rounded-lg border border-card-border flex items-center justify-center gap-3 text-xs font-mono text-cyan-400">
-                  <span>P1</span>
-                  <span>→</span>
-                  <span>P4</span>
-                  <span>→</span>
-                  <span>P3</span>
-                  <span>→</span>
-                  <span>P2</span>
-                  <span>→</span>
-                  <span>P1</span>
-                </div>
+                <p className="text-slate-400 text-xs mt-1">
+                  They return to 4 cards, and the next player receives the 5th card to think and pass. If the timer runs out, the server auto-passes a non-matching card.
+                </p>
               </div>
             </div>
 
@@ -89,31 +88,18 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ isOpen, onClose 
                 4
               </span>
               <div>
-                <h4 className="font-semibold text-white">Complete the Set</h4>
+                <h4 className="font-semibold text-white">Complete 4 Matching Cards</h4>
                 <p className="text-slate-400 text-xs mt-0.5">
-                  Your goal is to collect 4 identical cards (e.g. 4x Interstellar).
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-surface-50 border border-card-border flex items-center justify-center font-bold text-xs text-indigo-400">
-                5
-              </span>
-              <div>
-                <h4 className="font-semibold text-white">Ranks & Finishers</h4>
-                <p className="text-slate-400 text-xs mt-0.5">
-                  The first player to complete a set wins <strong>1st Place</strong>. The remaining players keep passing until 2nd, 3rd, and 4th places are determined!
+                  The first player to collect 4 cards of the same item wins <strong>1st Place</strong>! The remaining players continue passing until 2nd, 3rd, and 4th places are decided.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Strategy Tip */}
           <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2.5">
             <Trophy className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-amber-200/90 text-xs leading-relaxed">
-              <strong>Strategy tip:</strong> Remember what cards you have passed and observe what comes your way. Be careful not to pass cards that your neighbor is collecting!
+              <strong>Strategy tip:</strong> Watch what cards your neighbor is passing you. If they keep passing you Inception, they aren't collecting it! Be careful not to pass them what they want.
             </p>
           </div>
         </div>

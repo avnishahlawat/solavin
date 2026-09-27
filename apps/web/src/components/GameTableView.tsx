@@ -1,39 +1,51 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   PublicGameState,
   PrivatePlayerState,
   PublicPlayer,
-  WinnerResult,
-  PassRecord
+  Card as CardType
 } from '@solavin/shared';
 import { CardItem } from './CardItem';
 import {
   RotateCcw,
-  CheckCircle2,
   Clock,
-  ArrowRight,
-  ArrowDown,
-  ArrowLeft,
-  ArrowUp,
   Trophy,
-  Crown
+  Crown,
+  Sparkles,
+  ArrowRight,
+  Dice5
 } from 'lucide-react';
 
 interface GameTableViewProps {
   publicState: PublicGameState;
   privateState?: PrivatePlayerState;
   isPassing: boolean;
-  onSelectCard: (cardId: string) => void;
+  onPassCard: (cardId: string) => void;
 }
 
 export const GameTableView: React.FC<GameTableViewProps> = ({
   publicState,
   privateState,
   isPassing,
-  onSelectCard
+  onPassCard
 }) => {
   const currentUserId = privateState?.player.id;
   const currentUserSeat = privateState?.player.seatIndex ?? 0;
+
+  // Real-time smooth timer countdown
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(timer);
+  }, []);
+
+  const turnPlayer = publicState.players.find((p) => p.id === publicState.turnPlayerId);
+  const isYourTurn = !!privateState?.isYourTurn;
+
+  let secondsLeft = 0;
+  if (publicState.turnDeadline) {
+    secondsLeft = Math.max(0, Math.ceil((publicState.turnDeadline - now) / 1000));
+  }
 
   // Re-orient opponents relative to current player so current player is always South
   const getRelativePosition = (seatIndex: number): 'south' | 'west' | 'north' | 'east' => {
@@ -59,10 +71,9 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
   const eastPlayer = opponents.find((p) => getRelativePosition(p.seatIndex) === 'east');
 
   const isCurrentPlayerActive = privateState?.player.status === 'active';
-  const hasSelected = !!privateState?.selectedCardId;
 
   // Render an opponent pod
-  const renderOpponentPod = (player?: PublicPlayer, position?: string) => {
+  const renderOpponentPod = (player?: PublicPlayer) => {
     if (!player) {
       return (
         <div className="w-40 sm:w-48 p-3 rounded-xl border border-dashed border-card-border/60 bg-surface-200/20 text-center text-xs text-slate-600">
@@ -72,6 +83,8 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
     }
 
     const isFinished = player.status === 'finished';
+    const isPlayerTurn = publicState.turnPlayerId === player.id;
+    const isStarter = publicState.starterPlayerId === player.id;
     const isDisconnected = !player.isConnected;
 
     return (
@@ -79,8 +92,8 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
         className={`w-40 sm:w-52 p-3 sm:p-3.5 rounded-2xl border transition-all duration-300 shadow-xl ${
           isFinished
             ? 'bg-amber-950/30 border-amber-500/40 ring-1 ring-amber-500/30'
-            : player.hasSelectedCard
-            ? 'bg-surface-100 border-indigo-500/50 ring-1 ring-indigo-500/20'
+            : isPlayerTurn
+            ? 'bg-indigo-950/40 border-indigo-400 ring-2 ring-indigo-500/50 shadow-indigo-500/20'
             : 'bg-surface-100/90 border-card-border'
         }`}
       >
@@ -90,20 +103,24 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
               {player.name}
             </span>
             {player.isHost && <Crown className="w-3 h-3 text-amber-400 flex-shrink-0" />}
+            {isStarter && (
+              <span title="Started the round">
+                <Dice5 className="w-3 h-3 text-cyan-400 flex-shrink-0" />
+              </span>
+            )}
           </div>
           {isFinished ? (
             <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
               {player.rank === 1 ? '🏆 1ST' : player.rank === 2 ? '🥈 2ND' : player.rank === 3 ? '🥉 3RD' : '4TH'}
             </span>
-          ) : player.hasSelectedCard ? (
-            <span className="flex items-center gap-1 text-[10px] font-bold text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded-full border border-indigo-500/30">
-              <CheckCircle2 className="w-3 h-3" />
-              READY
+          ) : isPlayerTurn ? (
+            <span className="flex items-center gap-1 text-[10px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded-full border border-indigo-500/40 animate-pulse">
+              <Clock className="w-3 h-3 text-indigo-400" />
+              {publicState.turnTimerSeconds > 0 ? `${secondsLeft}s` : 'Thinking'}
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-[10px] text-slate-500">
-              <Clock className="w-3 h-3 animate-spin" />
-              Thinking
+            <span className="text-[10px] font-medium text-slate-500">
+              {player.cardCount} cards
             </span>
           )}
         </div>
@@ -116,11 +133,11 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
         ) : (
           /* Face-down cards visual */
           <div className="flex items-center justify-center gap-1 py-1">
-            {[0, 1, 2, 3].slice(0, player.cardCount).map((idx) => (
+            {[0, 1, 2, 3, 4].slice(0, player.cardCount).map((idx) => (
               <div
                 key={idx}
                 className={`w-6 h-9 sm:w-7 sm:h-10 rounded-md border border-card-border bg-gradient-to-br from-surface-50 to-surface-200 shadow-sm flex items-center justify-center text-[9px] font-mono text-slate-500 ${
-                  player.hasSelectedCard && idx === 0 ? 'border-indigo-400 -translate-y-1' : ''
+                  isPlayerTurn ? 'border-indigo-400' : ''
                 }`}
               >
                 ●
@@ -146,9 +163,9 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
           <div className="bg-surface-100 border border-indigo-500/50 rounded-2xl px-8 py-5 shadow-2xl flex flex-col items-center gap-3 animate-pulse">
             <RotateCcw className="w-10 h-10 text-indigo-400 animate-spin" />
             <h3 className="font-extrabold text-lg sm:text-xl text-white tracking-wider">
-              PASSING CARDS ANTICLOCKWISE...
+              PASSING CARD ANTICLOCKWISE...
             </h3>
-            <p className="text-xs text-indigo-300">Simultaneous card exchange</p>
+            <p className="text-xs text-indigo-300">Passing 1 card to the next player</p>
           </div>
         </div>
       )}
@@ -157,19 +174,18 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
       <div className="relative w-full rounded-3xl bg-surface-200/40 border border-card-border/80 p-4 sm:p-8 flex flex-col justify-between items-center min-h-[460px] sm:min-h-[520px]">
         {/* NORTH (Opponent 2) */}
         <div className="flex justify-center z-10">
-          {renderOpponentPod(northPlayer, 'north')}
+          {renderOpponentPod(northPlayer)}
         </div>
 
         {/* MIDDLE SECTION (West Opponent - Center Table - East Opponent) */}
         <div className="w-full flex items-center justify-between gap-2 sm:gap-4 my-auto">
           {/* WEST (Opponent 1) */}
           <div className="flex justify-start z-10">
-            {renderOpponentPod(westPlayer, 'west')}
+            {renderOpponentPod(westPlayer)}
           </div>
 
           {/* CENTER TABLE HUB */}
           <div className="relative w-44 h-44 sm:w-60 sm:h-60 rounded-full border-2 border-dashed border-card-border/80 flex flex-col items-center justify-center text-center p-4 bg-surface-100/50 backdrop-blur-xs shadow-inner">
-            {/* Animated Anticlockwise Direction Indicator */}
             <div className="absolute inset-0 rounded-full border border-indigo-500/20 animate-spin-slow pointer-events-none" />
 
             <div className="space-y-1">
@@ -181,15 +197,28 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
               </div>
             </div>
 
-            {/* Readiness progress */}
+            {/* Turn & Timer Display */}
             <div className="mt-3 flex flex-col items-center gap-1">
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-50 border border-card-border text-[11px] font-bold text-slate-300">
-                <RotateCcw className="w-3 h-3 text-cyan-400 animate-spin-slow" />
-                <span>
-                  {publicState.readyCount} / {publicState.totalActivePlayers} Ready
-                </span>
-              </div>
-              <span className="text-[10px] text-slate-500 flex items-center gap-1">
+              {isYourTurn ? (
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-600 text-white text-xs font-bold shadow-lg shadow-indigo-600/40 animate-pulse">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>YOUR TURN</span>
+                  {publicState.turnTimerSeconds > 0 && (
+                    <span className="bg-black/30 px-1.5 py-0.5 rounded-full text-[10px] font-mono">
+                      {secondsLeft}s
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-50 border border-card-border text-[11px] font-bold text-slate-300">
+                  <Clock className="w-3 h-3 text-cyan-400" />
+                  <span>{turnPlayer?.name || 'Turn'}</span>
+                  {publicState.turnTimerSeconds > 0 && (
+                    <span className="text-amber-400 font-mono">({secondsLeft}s)</span>
+                  )}
+                </div>
+              )}
+              <span className="text-[10px] text-slate-500 flex items-center gap-1 mt-1">
                 Anticlockwise Pass ↺
               </span>
             </div>
@@ -197,7 +226,7 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
 
           {/* EAST (Opponent 3) */}
           <div className="flex justify-end z-10">
-            {renderOpponentPod(eastPlayer, 'east')}
+            {renderOpponentPod(eastPlayer)}
           </div>
         </div>
 
@@ -217,17 +246,36 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
       </div>
 
       {/* CURRENT PLAYER'S POD & HAND (BOTTOM AREA) */}
-      <div className="w-full bg-surface-100 border border-card-border rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col items-center">
+      <div
+        className={`w-full rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col items-center transition-all ${
+          isYourTurn
+            ? 'bg-gradient-to-b from-indigo-950/40 to-surface-100 border-2 border-indigo-500 ring-2 ring-indigo-500/20'
+            : 'bg-surface-100 border border-card-border'
+        }`}
+      >
         {/* Status bar */}
         <div className="w-full flex items-center justify-between mb-3 px-1">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                isYourTurn ? 'bg-indigo-400 animate-ping' : 'bg-emerald-500'
+              }`}
+            />
             <span className="font-extrabold text-sm sm:text-base text-white">
               {privateState?.player.name} (You)
+            </span>
+            <span className="text-xs font-mono font-bold text-slate-400 bg-surface-50 px-2 py-0.5 rounded-lg border border-card-border">
+              {privateState?.cards.length} cards
             </span>
             {privateState?.player.isHost && (
               <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
                 HOST
+              </span>
+            )}
+            {publicState.starterPlayerId === currentUserId && (
+              <span className="text-[10px] font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20 flex items-center gap-1">
+                <Dice5 className="w-3 h-3" />
+                STARTER
               </span>
             )}
           </div>
@@ -238,42 +286,64 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
                 <Trophy className="w-3.5 h-3.5 text-amber-400" />
                 {privateState?.player.rank === 1 ? '1st Place Winner!' : `${privateState?.player.rank}th Place Finished`}
               </span>
-            ) : hasSelected ? (
-              <span className="text-xs font-bold text-indigo-400 flex items-center gap-1">
-                <CheckCircle2 className="w-4 h-4" />
-                Card Locked — Waiting for others
+            ) : isYourTurn ? (
+              <span className="text-xs font-bold text-indigo-300 flex items-center gap-1.5 animate-pulse">
+                <span>👉 Tap 1 card to pass to {privateState?.passingTo?.name}</span>
+                {publicState.turnTimerSeconds > 0 && (
+                  <span
+                    className={`font-mono px-2 py-0.5 rounded-full text-xs font-black ${
+                      secondsLeft <= 5
+                        ? 'bg-rose-500 text-white animate-bounce'
+                        : secondsLeft <= 10
+                        ? 'bg-amber-500 text-black'
+                        : 'bg-indigo-600 text-white'
+                    }`}
+                  >
+                    ⏱️ {secondsLeft}s
+                  </span>
+                )}
               </span>
             ) : (
-              <span className="text-xs font-semibold text-cyan-400 animate-pulse">
-                👉 Tap 1 card to pass anticlockwise
+              <span className="text-xs font-semibold text-slate-400 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-slate-500" />
+                <span>Waiting for {turnPlayer?.name || 'player'} to pass</span>
+                {publicState.turnTimerSeconds > 0 && (
+                  <span className="text-amber-400/90 font-mono">({secondsLeft}s)</span>
+                )}
               </span>
             )}
           </div>
         </div>
 
-        {/* 4 Cards Hand */}
+        {/* Player's Cards Hand (can be 3, 4, or 5 cards!) */}
         <div className="flex items-center justify-center gap-2 sm:gap-4 overflow-x-auto py-2 px-1 max-w-full">
-          {privateState?.cards.map((card) => {
-            const isSelected = privateState.selectedCardId === card.id;
-            return (
-              <CardItem
-                key={card.id}
-                card={card}
-                isSelected={isSelected}
-                disabled={!isCurrentPlayerActive || isPassing}
-                onSelect={() => onSelectCard(card.id)}
-              />
-            );
-          })}
+          {privateState?.cards.map((card: CardType) => (
+            <CardItem
+              key={card.id}
+              card={card}
+              disabled={!isYourTurn || isPassing}
+              onSelect={() => {
+                if (isYourTurn && !isPassing) {
+                  onPassCard(card.id);
+                }
+              }}
+            />
+          ))}
         </div>
 
         {/* Guidance footnote */}
         <div className="mt-2 text-center text-xs text-slate-500">
           {isCurrentPlayerActive ? (
-            <span>Cards will pass simultaneously when all active players lock their card</span>
+            isYourTurn ? (
+              <span className="text-indigo-300 font-medium">
+                Tap the card you want to discard. It will pass anticlockwise to {privateState?.passingTo?.name}.
+              </span>
+            ) : (
+              <span>Inspect your cards and prepare your strategy while opponent decides</span>
+            )
           ) : (
             <span className="text-amber-400/80 font-medium">
-              You completed your 4 matching cards! Sit back and spectate the remaining players.
+              You completed your 4 matching cards! You are now spectating the remaining players.
             </span>
           )}
         </div>

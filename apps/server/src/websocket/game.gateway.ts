@@ -29,6 +29,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server: Server;
 
   private readonly logger = new Logger(GameGateway.name);
+  private roomTimers: Map<string, NodeJS.Timeout> = new Map();
 
   constructor(
     private readonly roomsService: RoomsService,
@@ -53,12 +54,74 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  private clearTurnTimer(roomCode: string): void {
+    const existing = this.roomTimers.get(roomCode);
+    if (existing) {
+      clearTimeout(existing);
+      this.roomTimers.delete(roomCode);
+    }
+  }
+
+  private scheduleTurnTimer(room: InternalGameState): void {
+    this.clearTurnTimer(room.roomCode);
+
+    if (room.phase !== 'PLAYING' || !room.turnPlayerId || room.turnTimerSeconds <= 0) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      this.handleTurnTimeout(room.roomCode);
+    }, room.turnTimerSeconds * 1000);
+
+    this.roomTimers.set(room.roomCode, timer);
+  }
+
+  private handleTurnTimeout(roomCode: string): void {
+    const room = this.roomsService.getRoom(roomCode);
+    if (!room || room.phase !== 'PLAYING') return;
+
+    const result = this.gamesService.autoPassForTimeout(room);
+    if (!result) return;
+
+    const { updatedRoom, pass, playerName } = result;
+    this.roomsService.setRoom(roomCode, updatedRoom);
+
+    // Notify room of timeout auto-pass
+    this.server.to(`room:${roomCode}`).emit('notification', {
+      type: 'warning',
+      message: `⏱️ Time expired! ${playerName} auto-passed a card.`
+    });
+
+    this.server.to(`room:${roomCode}`).emit('game:passing', {
+      pass,
+      nextTurnPlayerId: updatedRoom.turnPlayerId
+    });
+
+    setTimeout(() => {
+      this.broadcastRoomSync(updatedRoom);
+
+      // Check for winners
+      if (updatedRoom.winners.length > 0) {
+        const latestWinner = updatedRoom.winners[updatedRoom.winners.length - 1];
+        this.server.to(`room:${roomCode}`).emit('game:player-finished', latestWinner);
+      }
+
+      if (updatedRoom.phase === 'GAME_COMPLETE') {
+        this.clearTurnTimer(roomCode);
+        this.server.to(`room:${roomCode}`).emit('game:complete', {
+          winners: updatedRoom.winners
+        });
+      } else {
+        this.scheduleTurnTimer(updatedRoom);
+      }
+    }, 300);
+  }
+
   /**
    * Broadcast tailored state to each player: public state + strictly their own private hand
    */
   broadcastRoomSync(room: InternalGameState): void {
     const publicState = getPublicGameState(room);
-    const roomChannel = `room:${room.roomCode}`;
 
     for (const player of room.players) {
       if (player.socketId && player.isConnected) {
@@ -80,6 +143,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       playerName: string;
       themeId?: string;
       customTheme?: { name: string; items: string[] };
+      turnTimerSeconds?: number;
     }
   ) {
     try {
@@ -87,7 +151,8 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         data.playerName,
         client.id,
         data.themeId,
-        data.customTheme
+        data.customTheme,
+        data.turnTimerSeconds
       );
 
       client.join(`room:${room.roomCode}`);
@@ -148,24 +213,26 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  @SubscribeMessage('room:update-theme')
-  handleUpdateTheme(
+  @SubscribeMessage('room:update-settings')
+  handleUpdateSettings(
     @ConnectedSocket() client: Socket,
     @MessageBody()
     data: {
       themeId?: string;
       customTheme?: { name: string; items: string[] };
+      turnTimerSeconds?: number;
     }
   ) {
     const context = this.roomsService.getPlayerContext(client.id);
     if (!context) return { success: false, error: 'Not in a room' };
 
     try {
-      const updated = this.roomsService.updateTheme(
+      const updated = this.roomsService.updateSettings(
         context.roomCode,
         context.playerId,
         data.themeId,
-        data.customTheme
+        data.customTheme,
+        data.turnTimerSeconds
       );
       this.broadcastRoomSync(updated);
       return { success: true };
@@ -187,10 +254,14 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.roomsService.setRoom(room.roomCode, dealtGame);
       this.broadcastRoomSync(dealtGame);
 
+      const starter = dealtGame.players.find((p) => p.id === dealtGame.starterPlayerId);
       this.server.to(`room:${room.roomCode}`).emit('notification', {
         type: 'success',
-        message: 'The game has started! 16 cards distributed.'
+        message: `Game started! 🎲 ${starter?.name} was randomly chosen to pass first!`
       });
+
+      // Schedule turn timer
+      this.scheduleTurnTimer(dealtGame);
 
       return { success: true };
     } catch (err: any) {
@@ -198,8 +269,8 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  @SubscribeMessage('game:select-card')
-  handleSelectCard(
+  @SubscribeMessage('game:pass-card')
+  handlePassCard(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { cardId: string }
   ) {
@@ -209,8 +280,11 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const room = this.roomsService.getRoom(context.roomCode);
     if (!room) return { success: false, error: 'Room not found' };
 
+    // Clear active turn timer
+    this.clearTurnTimer(room.roomCode);
+
     try {
-      const { updatedRoom, isRoundComplete, passes } = this.gamesService.handleCardSelection(
+      const { updatedRoom, pass } = this.gamesService.handlePassCard(
         room,
         context.playerId,
         data.cardId
@@ -218,36 +292,34 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       this.roomsService.setRoom(room.roomCode, updatedRoom);
 
-      if (isRoundComplete && passes) {
-        // Broadcast passing event for animation
-        this.server.to(`room:${room.roomCode}`).emit('game:passing', {
-          passes,
-          nextRound: updatedRoom.round
-        });
+      this.server.to(`room:${room.roomCode}`).emit('game:passing', {
+        pass,
+        nextTurnPlayerId: updatedRoom.turnPlayerId
+      });
 
-        // Delay sync slightly for smooth animation sync
-        setTimeout(() => {
-          this.broadcastRoomSync(updatedRoom);
-
-          // Check if any winners finished
-          if (updatedRoom.winners.length > 0) {
-            const latestWinner = updatedRoom.winners[updatedRoom.winners.length - 1];
-            this.server.to(`room:${room.roomCode}`).emit('game:player-finished', latestWinner);
-          }
-
-          if (updatedRoom.phase === 'GAME_COMPLETE') {
-            this.server.to(`room:${room.roomCode}`).emit('game:complete', {
-              winners: updatedRoom.winners
-            });
-          }
-        }, 500);
-      } else {
-        // Just normal selection update
+      setTimeout(() => {
         this.broadcastRoomSync(updatedRoom);
-      }
+
+        // Check if any winners finished
+        if (updatedRoom.winners.length > 0) {
+          const latestWinner = updatedRoom.winners[updatedRoom.winners.length - 1];
+          this.server.to(`room:${room.roomCode}`).emit('game:player-finished', latestWinner);
+        }
+
+        if (updatedRoom.phase === 'GAME_COMPLETE') {
+          this.clearTurnTimer(room.roomCode);
+          this.server.to(`room:${room.roomCode}`).emit('game:complete', {
+            winners: updatedRoom.winners
+          });
+        } else {
+          // Schedule next player's turn timer
+          this.scheduleTurnTimer(updatedRoom);
+        }
+      }, 300);
 
       return { success: true };
     } catch (err: any) {
+      this.scheduleTurnTimer(room);
       return { success: false, error: err.message };
     }
   }
@@ -260,6 +332,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       sameTheme?: boolean;
       themeId?: string;
       customTheme?: { name: string; items: string[] };
+      turnTimerSeconds?: number;
     }
   ) {
     const context = this.roomsService.getPlayerContext(client.id);
@@ -268,15 +341,20 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const room = this.roomsService.getRoom(context.roomCode);
     if (!room) return { success: false, error: 'Room not found' };
 
+    this.clearTurnTimer(room.roomCode);
+
     try {
       const newGame = this.gamesService.restartGame(room, context.playerId, data);
       this.roomsService.setRoom(room.roomCode, newGame);
       this.broadcastRoomSync(newGame);
 
+      const starter = newGame.players.find((p) => p.id === newGame.starterPlayerId);
       this.server.to(`room:${room.roomCode}`).emit('notification', {
         type: 'info',
-        message: 'New round started! Cards reshuffled and dealt.'
+        message: `New round started! 🎲 ${starter?.name} passes first!`
       });
+
+      this.scheduleTurnTimer(newGame);
 
       return { success: true };
     } catch (err: any) {

@@ -2,9 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import {
   InternalGameState,
   dealCards,
-  selectCard,
-  areAllActivePlayersReady,
-  resolvePassingRound,
+  passCard,
   PassRecord,
   Theme,
   PRESET_THEMES,
@@ -32,50 +30,81 @@ export class GamesService {
     }
 
     const dealtGame = dealCards(room);
-    this.logger.log(`Game started in room ${room.roomCode} with theme ${room.theme.name}`);
+    this.logger.log(
+      `Game started in room ${room.roomCode}. Starter: ${dealtGame.starterPlayerId}, Timer: ${dealtGame.turnTimerSeconds}s`
+    );
     return dealtGame;
   }
 
-  handleCardSelection(
+  handlePassCard(
     room: InternalGameState,
     playerId: string,
     cardId: string
   ): {
     updatedRoom: InternalGameState;
-    isRoundComplete: boolean;
-    passes?: PassRecord[];
+    pass: PassRecord;
   } {
-    const updatedRoom = selectCard(room, playerId, cardId);
+    const { nextState, pass } = passCard(room, playerId, cardId);
 
-    // Check if all active players are ready
-    if (areAllActivePlayersReady(updatedRoom)) {
-      this.logger.log(
-        `All active players ready in room ${room.roomCode}. Resolving round ${updatedRoom.round}...`
-      );
-      const { nextState, passes } = resolvePassingRound(updatedRoom);
-
-      // If game reached complete, persist if db available
-      if (nextState.phase === 'GAME_COMPLETE') {
-        this.persistGameRecord(nextState);
-      }
-
-      return {
-        updatedRoom: nextState,
-        isRoundComplete: true,
-        passes
-      };
+    // If game reached completion, persist if db available
+    if (nextState.phase === 'GAME_COMPLETE') {
+      this.persistGameRecord(nextState);
     }
 
     return {
+      updatedRoom: nextState,
+      pass
+    };
+  }
+
+  /**
+   * Auto-pass when a player's turn timer expires
+   */
+  autoPassForTimeout(room: InternalGameState): {
+    updatedRoom: InternalGameState;
+    pass: PassRecord;
+    playerName: string;
+  } | null {
+    if (room.phase !== 'PLAYING' || !room.turnPlayerId) return null;
+
+    const player = room.players.find((p) => p.id === room.turnPlayerId);
+    if (!player || player.hand.length === 0) return null;
+
+    // Pick card to pass: count occurrences, discard least frequent card (avoid breaking pairs)
+    const counts = new Map<string, number>();
+    for (const card of player.hand) {
+      counts.set(card.itemId, (counts.get(card.itemId) || 0) + 1);
+    }
+
+    let minCard = player.hand[0];
+    let minCount = 999;
+    for (const card of player.hand) {
+      const count = counts.get(card.itemId) || 0;
+      if (count < minCount) {
+        minCount = count;
+        minCard = card;
+      }
+    }
+
+    this.logger.log(`Auto-passing card ${minCard.itemName} for ${player.name} in room ${room.roomCode} due to timeout`);
+    const { updatedRoom, pass } = this.handlePassCard(room, player.id, minCard.id);
+
+    return {
       updatedRoom,
-      isRoundComplete: false
+      pass,
+      playerName: player.name
     };
   }
 
   restartGame(
     room: InternalGameState,
     hostPlayerId: string,
-    options?: { sameTheme?: boolean; themeId?: string; customTheme?: { name: string; items: string[] } }
+    options?: {
+      sameTheme?: boolean;
+      themeId?: string;
+      customTheme?: { name: string; items: string[] };
+      turnTimerSeconds?: number;
+    }
   ): InternalGameState {
     if (room.hostId !== hostPlayerId) {
       throw new BadRequestException('Only the host can restart the game');
@@ -93,11 +122,12 @@ export class GamesService {
       if (found) theme = found;
     }
 
+    const turnTimer = options?.turnTimerSeconds !== undefined ? options.turnTimerSeconds : room.turnTimerSeconds;
+
     // Reset player statuses
     const resetPlayers = room.players.map((p) => ({
       ...p,
       hand: [],
-      selectedCardId: null,
       status: 'active' as const,
       rank: undefined,
       completedItem: undefined,
@@ -109,13 +139,16 @@ export class GamesService {
       theme,
       phase: 'LOBBY',
       round: 0,
+      turnTimerSeconds: turnTimer,
+      turnPlayerId: null,
+      starterPlayerId: null,
+      turnDeadline: null,
       players: resetPlayers,
       winners: [],
       lastPass: undefined,
       updatedAt: Date.now()
     };
 
-    // Immediately deal new round
     return dealCards(resetRoom);
   }
 

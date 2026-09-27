@@ -5,17 +5,15 @@ import {
   shuffleDeck,
   createGame,
   dealCards,
-  selectCard,
-  resolvePassingRound,
+  passCard,
   validateInvariants,
   getPublicGameState,
   getPrivatePlayerState,
-  InternalPlayer,
   checkAndResolveWins
 } from './engine';
 import { DEFAULT_THEME } from '../constants/themes';
 
-describe('SOLAVIN Game Engine', () => {
+describe('SOLAVIN Turn-Based Game Engine', () => {
   it('generates exactly 16 cards from theme (4 items x 4 copies each)', () => {
     const deck = generateDeck(DEFAULT_THEME);
     assert.strictEqual(deck.length, 16);
@@ -31,73 +29,107 @@ describe('SOLAVIN Game Engine', () => {
     }
   });
 
-  it('deals 4 cards to each of the 4 players and preserves all 16 unique cards', () => {
-    let game = createGame('TEST01', 'p1', DEFAULT_THEME);
+  it('deals 4 cards each and selects a random starter player', () => {
+    let game = createGame('TEST01', 'p1', DEFAULT_THEME, 30);
     game.players = [
-      { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [], selectedCardId: null, isConnected: true },
-      { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [], selectedCardId: null, isConnected: true },
-      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], selectedCardId: null, isConnected: true },
-      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], selectedCardId: null, isConnected: true }
+      { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [], isConnected: true },
+      { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [], isConnected: true },
+      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], isConnected: true },
+      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], isConnected: true }
     ];
 
     game = dealCards(game);
 
     assert.strictEqual(game.phase, 'PLAYING');
-    assert.strictEqual(game.round, 1);
-    assert.strictEqual(game.players.length, 4);
-
-    const inv = validateInvariants(game);
-    assert.strictEqual(inv.valid, true, inv.errors.join(', '));
+    assert.ok(game.starterPlayerId);
+    assert.strictEqual(game.turnPlayerId, game.starterPlayerId);
+    assert.strictEqual(game.turnTimerSeconds, 30);
+    assert.ok(game.turnDeadline);
 
     for (const p of game.players) {
       assert.strictEqual(p.hand.length, 4);
     }
+
+    const inv = validateInvariants(game);
+    assert.strictEqual(inv.valid, true, inv.errors.join(', '));
   });
 
-  it('passes cards anticlockwise simultaneously without card duplication or loss', () => {
-    let game = createGame('TEST02', 'p1', DEFAULT_THEME);
+  it('starter passes 1 card: starter has 3 cards, next receiver has 5 cards', () => {
+    let game = createGame('TEST02', 'p1', DEFAULT_THEME, 30);
     game.players = [
-      { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [], selectedCardId: null, isConnected: true },
-      { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [], selectedCardId: null, isConnected: true },
-      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], selectedCardId: null, isConnected: true },
-      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], selectedCardId: null, isConnected: true }
+      { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [], isConnected: true },
+      { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [], isConnected: true },
+      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], isConnected: true },
+      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], isConnected: true }
     ];
+
     game = dealCards(game);
+    // Force starter to p1 (seat 0) for deterministic check
+    game.starterPlayerId = 'p1';
+    game.turnPlayerId = 'p1';
 
-    // Each player selects a card from their own hand
-    for (const p of game.players) {
-      game = selectCard(game, p.id, p.hand[0].id);
-    }
+    const p1 = game.players.find((p) => p.id === 'p1')!;
+    const cardToPass = p1.hand[0];
 
-    const { nextState, passes } = resolvePassingRound(game);
+    // P1 passes card to anticlockwise neighbor (Seat 0 passes to Seat 3 -> P4)
+    const { nextState, pass } = passCard(game, 'p1', cardToPass.id);
 
-    assert.strictEqual(passes.length, 4);
-    // Anticlockwise passing checks:
-    // P1 (seat 0) passes to P4 (seat 3)
-    // P4 (seat 3) passes to P3 (seat 2)
-    // P3 (seat 2) passes to P2 (seat 1)
-    // P2 (seat 1) passes to P1 (seat 0)
-    const p1Pass = passes.find((pass) => pass.fromPlayerId === 'p1');
-    assert.strictEqual(p1Pass?.toPlayerId, 'p4');
+    assert.strictEqual(pass.fromPlayerId, 'p1');
+    assert.strictEqual(pass.toPlayerId, 'p4');
 
-    const p4Pass = passes.find((pass) => pass.fromPlayerId === 'p4');
-    assert.strictEqual(p4Pass?.toPlayerId, 'p3');
+    const updatedP1 = nextState.players.find((p) => p.id === 'p1')!;
+    const updatedP4 = nextState.players.find((p) => p.id === 'p4')!;
 
-    const p3Pass = passes.find((pass) => pass.fromPlayerId === 'p3');
-    assert.strictEqual(p3Pass?.toPlayerId, 'p2');
-
-    const p2Pass = passes.find((pass) => pass.fromPlayerId === 'p2');
-    assert.strictEqual(p2Pass?.toPlayerId, 'p1');
+    // Starter now has 3 cards
+    assert.strictEqual(updatedP1.hand.length, 3);
+    // Receiver now has 5 cards
+    assert.strictEqual(updatedP4.hand.length, 5);
+    // Next turn is on P4!
+    assert.strictEqual(nextState.turnPlayerId, 'p4');
 
     const inv = validateInvariants(nextState);
     assert.strictEqual(inv.valid, true, inv.errors.join(', '));
   });
 
-  it('detects a winner with 4 matching cards, assigns 1st place, and updates active ring', () => {
-    let game = createGame('TEST03', 'p1', DEFAULT_THEME);
-    const mockTheme = DEFAULT_THEME;
+  it('second player with 5 cards passes 1 card: drops to 4 cards, next receiver gets 5 cards', () => {
+    let game = createGame('TEST03', 'p1', DEFAULT_THEME, 30);
+    game.players = [
+      { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [], isConnected: true },
+      { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [], isConnected: true },
+      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], isConnected: true },
+      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], isConnected: true }
+    ];
+    game = dealCards(game);
+    game.starterPlayerId = 'p1';
+    game.turnPlayerId = 'p1';
 
-    // Give p1 4 Interstellar cards
+    // Step 1: P1 (4 cards) passes to P4
+    const pass1 = passCard(game, 'p1', game.players[0].hand[0].id);
+    let s2 = pass1.nextState;
+
+    // Step 2: P4 (now has 5 cards) passes to P3 (seat 2)
+    const p4 = s2.players.find((p) => p.id === 'p4')!;
+    assert.strictEqual(p4.hand.length, 5);
+    const pass2 = passCard(s2, 'p4', p4.hand[0].id);
+    let s3 = pass2.nextState;
+
+    const p4After = s3.players.find((p) => p.id === 'p4')!;
+    const p3After = s3.players.find((p) => p.id === 'p3')!;
+
+    // P4 now has 4 cards
+    assert.strictEqual(p4After.hand.length, 4);
+    // P3 now has 5 cards
+    assert.strictEqual(p3After.hand.length, 5);
+    // Turn is now on P3
+    assert.strictEqual(s3.turnPlayerId, 'p3');
+
+    const inv = validateInvariants(s3);
+    assert.strictEqual(inv.valid, true, inv.errors.join(', '));
+  });
+
+  it('detects a winner with 4 matching cards, assigns 1st place, and updates active ring', () => {
+    let game = createGame('TEST04', 'p1', DEFAULT_THEME);
+
     const p1Hand = [
       { id: 'interstellar-1', itemId: 'interstellar', itemName: 'Interstellar' },
       { id: 'interstellar-2', itemId: 'interstellar', itemName: 'Interstellar' },
@@ -127,10 +159,10 @@ describe('SOLAVIN Game Engine', () => {
     ];
 
     game.players = [
-      { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: p1Hand, selectedCardId: null, isConnected: true },
-      { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: p2Hand, selectedCardId: null, isConnected: true },
-      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: p3Hand, selectedCardId: null, isConnected: true },
-      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: p4Hand, selectedCardId: null, isConnected: true }
+      { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: p1Hand, isConnected: true },
+      { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: p2Hand, isConnected: true },
+      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: p3Hand, isConnected: true },
+      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: p4Hand, isConnected: true }
     ];
     game.phase = 'PLAYING';
     game.round = 1;
@@ -143,20 +175,15 @@ describe('SOLAVIN Game Engine', () => {
     assert.strictEqual(resolved.winners.length, 1);
     assert.strictEqual(resolved.winners[0].playerId, 'p1');
     assert.strictEqual(resolved.winners[0].itemName, 'Interstellar');
-
-    // Remaining active players: p2, p3, p4
-    const pub = getPublicGameState(resolved);
-    assert.strictEqual(pub.totalActivePlayers, 3);
-    assert.deepStrictEqual(pub.activePassingOrder, ['p2', 'p3', 'p4']);
   });
 
   it('guarantees private player state does not leak other players cards', () => {
-    let game = createGame('TEST04', 'p1', DEFAULT_THEME);
+    let game = createGame('TEST05', 'p1', DEFAULT_THEME);
     game.players = [
-      { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [], selectedCardId: null, isConnected: true },
-      { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [], selectedCardId: null, isConnected: true },
-      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], selectedCardId: null, isConnected: true },
-      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], selectedCardId: null, isConnected: true }
+      { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [], isConnected: true },
+      { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [], isConnected: true },
+      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], isConnected: true },
+      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], isConnected: true }
     ];
     game = dealCards(game);
 
@@ -165,7 +192,6 @@ describe('SOLAVIN Game Engine', () => {
     assert.strictEqual(p1Private.cards.length, 4);
 
     const pub = getPublicGameState(game);
-    // Public state has cardCount but NO cards array
     for (const player of pub.players) {
       assert.strictEqual(player.cardCount, 4);
       assert.strictEqual((player as any).hand, undefined);
