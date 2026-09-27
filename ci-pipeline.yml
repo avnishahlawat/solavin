@@ -1,0 +1,43 @@
+# SOLAVIN GitHub Actions CI Pipeline
+# To enable: Create .github/workflows/ci.yml directly on GitHub web interface or grant 'workflow' scope to your PAT.
+
+name: SOLAVIN CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 22
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.x
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build Shared Types & Engine
+      run: npm run build --workspace=@solavin/shared
+
+    - name: Run Game Engine Unit Tests
+      run: node --test packages/shared/dist/engine/engine.spec.js
+
+    - name: Build Web Frontend
+      run: npm run build --workspace=@solavin/web
+
+    - name: Generate Prisma Client & Build Server
+      run: |
+        npm run prisma:generate --workspace=@solavin/server
+        npm run build --workspace=@solavin/server
+
+    - name: Run E2E Multiplayer Acceptance Test
+      run: npx ts-node -r tsconfig-paths/register test-e2e.ts
