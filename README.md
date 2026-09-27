@@ -48,7 +48,11 @@ flowchart TD
    * They choose which card to keep and which to pass anticlockwise. Once passed, they return to **4 cards**, and the next player receives the 5th card!
    * When cards make a full round back to the starter, the starter receives a card and returns to 4 cards.
 3. **Turn Timeout Auto-Pass**: If a player's timer expires before choosing, the server authoritatively auto-discards a non-matching card to keep the game flowing seamlessly.
-4. **Win Condition**: The first player to assemble **4 matching cards** of the same item wins 1st Place! The remaining players continue circulating cards until 2nd, 3rd, and 4th places are decided.
+4. **4-Card Win Condition**:
+   * A player can only win when they hold **exactly 4 matching cards**.
+   * If a player holds 5 cards, they cannot win early; they must pass 1 card on their turn. If their remaining 4 cards match, they win!
+   * If the starter receives their 4th card and all 4 match, the starter wins, and the player who passed to them initiates the next pass.
+5. **Private Celebrations**: Celebratory animations and confetti trigger **only on the winner's device**, while other players receive a clean, non-intrusive notification.
 
 ---
 
@@ -166,12 +170,48 @@ Open `http://localhost:3000` in multiple browser windows or separate devices on 
 
 ## 🐳 Running with Docker Compose
 
+Run the entire application along with PostgreSQL in containers:
+
 ```bash
 docker compose up --build
 ```
 * **Frontend**: `http://localhost:3000`
 * **Backend**: `http://localhost:3001`
 * **PostgreSQL**: `localhost:5432`
+
+---
+
+## 🚢 Deployment Guide (Free Tier Ready)
+
+### 1. Database (Neon / Supabase)
+1. Create a free PostgreSQL instance at [Neon.tech](https://neon.tech) or [Supabase](https://supabase.com).
+2. Copy the connection string: `postgresql://user:password@ep-xyz.neon.tech/neondb?sslmode=require`.
+
+### 2. Backend Deployment (Render / Railway / Fly.io)
+Deploy the NestJS server:
+* **Root Directory**: `apps/server` (or monorepo root)
+* **Build Command**:
+  ```bash
+  npm run build --workspace=@solavin/shared && npm run prisma:generate --workspace=@solavin/server && npm run build --workspace=@solavin/server
+  ```
+* **Start Command**:
+  ```bash
+  node apps/server/dist/main.js
+  ```
+* **Environment Variables**:
+  * `NODE_ENV=production`
+  * `PORT=3001`
+  * `CORS_ORIGIN=*` (or your frontend Vercel URL)
+  * `DATABASE_URL=your_postgres_connection_string`
+
+### 3. Frontend Deployment (Vercel)
+Deploy the React frontend:
+* **Framework Preset**: Vite
+* **Root Directory**: `apps/web`
+* **Build Command**: `npm run build --workspace=@solavin/web`
+* **Output Directory**: `dist`
+* **Environment Variables**:
+  * `VITE_SOCKET_URL=https://your-backend.onrender.com` (Your Render/Railway backend URL)
 
 ---
 

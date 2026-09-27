@@ -8,6 +8,8 @@ dist
 build
 .next
 out
+.turbo
+*.tsbuildinfo
 
 # Environment variables
 .env
@@ -27,12 +29,13 @@ lerna-debug.log*
 .vscode
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# Prisma
+# Prisma & Local DB
 dev.db
 dev.db-journal
