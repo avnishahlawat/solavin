@@ -3,9 +3,9 @@ node_modules
 .pnp
 .pnp.js
 
-# Build artifacts
-dist
-build
+# Build artifacts (allow server and shared dist - pre-built for Render)
+apps/web/dist
+apps/web/build
 .next
 out
 .turbo
