@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces",
-    "build:server": "echo Pre-built server dist committed to git - no compilation needed",
+    "build:server": "npm install",
     "build:web": "npm run build --workspace=@solavin/shared && npm run build --workspace=@solavin/web",
     "test": "npm run test --workspaces",
     "lint": "npm run lint --workspaces",
