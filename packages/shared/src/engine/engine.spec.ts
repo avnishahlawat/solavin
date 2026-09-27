@@ -8,8 +8,7 @@ import {
   passCard,
   validateInvariants,
   getPublicGameState,
-  getPrivatePlayerState,
-  checkAndResolveWins
+  getPrivatePlayerState
 } from './engine';
 import { DEFAULT_THEME } from '../constants/themes';
 
@@ -54,131 +53,87 @@ describe('SOLAVIN Turn-Based Game Engine', () => {
     assert.strictEqual(inv.valid, true, inv.errors.join(', '));
   });
 
-  it('starter passes 1 card: starter has 3 cards, next receiver has 5 cards', () => {
+  it('passer holding 5 cards passes 1 card and completes 4 matching cards to win 1st place', () => {
     let game = createGame('TEST02', 'p1', DEFAULT_THEME, 30);
-    game.players = [
-      { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [], isConnected: true },
-      { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [], isConnected: true },
-      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], isConnected: true },
-      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], isConnected: true }
-    ];
-
-    game = dealCards(game);
-    // Force starter to p1 (seat 0) for deterministic check
-    game.starterPlayerId = 'p1';
-    game.turnPlayerId = 'p1';
-
-    const p1 = game.players.find((p) => p.id === 'p1')!;
-    const cardToPass = p1.hand[0];
-
-    // P1 passes card to anticlockwise neighbor (Seat 0 passes to Seat 3 -> P4)
-    const { nextState, pass } = passCard(game, 'p1', cardToPass.id);
-
-    assert.strictEqual(pass.fromPlayerId, 'p1');
-    assert.strictEqual(pass.toPlayerId, 'p4');
-
-    const updatedP1 = nextState.players.find((p) => p.id === 'p1')!;
-    const updatedP4 = nextState.players.find((p) => p.id === 'p4')!;
-
-    // Starter now has 3 cards
-    assert.strictEqual(updatedP1.hand.length, 3);
-    // Receiver now has 5 cards
-    assert.strictEqual(updatedP4.hand.length, 5);
-    // Next turn is on P4!
-    assert.strictEqual(nextState.turnPlayerId, 'p4');
-
-    const inv = validateInvariants(nextState);
-    assert.strictEqual(inv.valid, true, inv.errors.join(', '));
-  });
-
-  it('second player with 5 cards passes 1 card: drops to 4 cards, next receiver gets 5 cards', () => {
-    let game = createGame('TEST03', 'p1', DEFAULT_THEME, 30);
-    game.players = [
-      { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [], isConnected: true },
-      { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [], isConnected: true },
-      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], isConnected: true },
-      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], isConnected: true }
-    ];
-    game = dealCards(game);
-    game.starterPlayerId = 'p1';
-    game.turnPlayerId = 'p1';
-
-    // Step 1: P1 (4 cards) passes to P4
-    const pass1 = passCard(game, 'p1', game.players[0].hand[0].id);
-    let s2 = pass1.nextState;
-
-    // Step 2: P4 (now has 5 cards) passes to P3 (seat 2)
-    const p4 = s2.players.find((p) => p.id === 'p4')!;
-    assert.strictEqual(p4.hand.length, 5);
-    const pass2 = passCard(s2, 'p4', p4.hand[0].id);
-    let s3 = pass2.nextState;
-
-    const p4After = s3.players.find((p) => p.id === 'p4')!;
-    const p3After = s3.players.find((p) => p.id === 'p3')!;
-
-    // P4 now has 4 cards
-    assert.strictEqual(p4After.hand.length, 4);
-    // P3 now has 5 cards
-    assert.strictEqual(p3After.hand.length, 5);
-    // Turn is now on P3
-    assert.strictEqual(s3.turnPlayerId, 'p3');
-
-    const inv = validateInvariants(s3);
-    assert.strictEqual(inv.valid, true, inv.errors.join(', '));
-  });
-
-  it('detects a winner with 4 matching cards, assigns 1st place, and updates active ring', () => {
-    let game = createGame('TEST04', 'p1', DEFAULT_THEME);
-
-    const p1Hand = [
+    // P2 has 4 Interstellar cards + 1 extra Dune card
+    const p2Hand = [
       { id: 'interstellar-1', itemId: 'interstellar', itemName: 'Interstellar' },
       { id: 'interstellar-2', itemId: 'interstellar', itemName: 'Interstellar' },
       { id: 'interstellar-3', itemId: 'interstellar', itemName: 'Interstellar' },
-      { id: 'interstellar-4', itemId: 'interstellar', itemName: 'Interstellar' }
+      { id: 'interstellar-4', itemId: 'interstellar', itemName: 'Interstellar' },
+      { id: 'dune-1', itemId: 'dune', itemName: 'Dune' }
     ];
 
+    game.players = [
+      { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [], isConnected: true },
+      { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: p2Hand, isConnected: true },
+      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], isConnected: true },
+      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], isConnected: true }
+    ];
+    game.phase = 'PLAYING';
+    game.turnPlayerId = 'p2';
+
+    // P2 passes the 5th card (dune-1) to P1 (anticlockwise neighbor from seat 1 is seat 0)
+    const { nextState, newWinners } = passCard(game, 'p2', 'dune-1');
+
+    assert.strictEqual(newWinners.length, 1);
+    assert.strictEqual(newWinners[0].playerId, 'p2');
+    assert.strictEqual(newWinners[0].rank, 1);
+    assert.strictEqual(newWinners[0].itemName, 'Interstellar');
+
+    const p2After = nextState.players.find((p) => p.id === 'p2')!;
+    assert.strictEqual(p2After.status, 'finished');
+    assert.strictEqual(p2After.rank, 1);
+    assert.strictEqual(p2After.hand.length, 4);
+
+    // Receiver P1 now has the card and is next turn
+    assert.strictEqual(nextState.turnPlayerId, 'p1');
+  });
+
+  it('starter receiver completes 4 cards upon receiving: starter wins and passer makes next pass', () => {
+    let game = createGame('TEST03', 'p1', DEFAULT_THEME, 30);
+    // P1 (starter) had 3 Interstellar cards
+    const p1Hand = [
+      { id: 'interstellar-1', itemId: 'interstellar', itemName: 'Interstellar' },
+      { id: 'interstellar-2', itemId: 'interstellar', itemName: 'Interstellar' },
+      { id: 'interstellar-3', itemId: 'interstellar', itemName: 'Interstellar' }
+    ];
+
+    // P2 has 5 cards and passes the 4th interstellar to P1
     const p2Hand = [
+      { id: 'interstellar-4', itemId: 'interstellar', itemName: 'Interstellar' },
       { id: 'avengers-1', itemId: 'avengers', itemName: 'Avengers' },
       { id: 'avengers-2', itemId: 'avengers', itemName: 'Avengers' },
       { id: 'dune-1', itemId: 'dune', itemName: 'Dune' },
       { id: 'inception-1', itemId: 'inception', itemName: 'Inception' }
     ];
 
-    const p3Hand = [
-      { id: 'avengers-3', itemId: 'avengers', itemName: 'Avengers' },
-      { id: 'dune-2', itemId: 'dune', itemName: 'Dune' },
-      { id: 'dune-3', itemId: 'dune', itemName: 'Dune' },
-      { id: 'inception-2', itemId: 'inception', itemName: 'Inception' }
-    ];
-
-    const p4Hand = [
-      { id: 'avengers-4', itemId: 'avengers', itemName: 'Avengers' },
-      { id: 'dune-4', itemId: 'dune', itemName: 'Dune' },
-      { id: 'inception-3', itemId: 'inception', itemName: 'Inception' },
-      { id: 'inception-4', itemId: 'inception', itemName: 'Inception' }
-    ];
-
     game.players = [
       { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: p1Hand, isConnected: true },
       { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: p2Hand, isConnected: true },
-      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: p3Hand, isConnected: true },
-      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: p4Hand, isConnected: true }
+      { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], isConnected: true },
+      { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], isConnected: true }
     ];
     game.phase = 'PLAYING';
-    game.round = 1;
+    game.turnPlayerId = 'p2';
 
-    const resolved = checkAndResolveWins(game);
+    // P2 passes interstellar-4 to P1
+    const { nextState, newWinners } = passCard(game, 'p2', 'interstellar-4');
 
-    const p1 = resolved.players.find((p) => p.id === 'p1');
-    assert.strictEqual(p1?.status, 'finished');
-    assert.strictEqual(p1?.rank, 1);
-    assert.strictEqual(resolved.winners.length, 1);
-    assert.strictEqual(resolved.winners[0].playerId, 'p1');
-    assert.strictEqual(resolved.winners[0].itemName, 'Interstellar');
+    assert.strictEqual(newWinners.length, 1);
+    assert.strictEqual(newWinners[0].playerId, 'p1');
+    assert.strictEqual(newWinners[0].rank, 1);
+
+    const p1After = nextState.players.find((p) => p.id === 'p1')!;
+    assert.strictEqual(p1After.status, 'finished');
+    assert.strictEqual(p1After.hand.length, 4);
+
+    // Passer P2 made P1 win, so P2 makes the next pass!
+    assert.strictEqual(nextState.turnPlayerId, 'p2');
   });
 
   it('guarantees private player state does not leak other players cards', () => {
-    let game = createGame('TEST05', 'p1', DEFAULT_THEME);
+    let game = createGame('TEST04', 'p1', DEFAULT_THEME);
     game.players = [
       { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [], isConnected: true },
       { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [], isConnected: true },

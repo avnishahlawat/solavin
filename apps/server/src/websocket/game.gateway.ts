@@ -13,7 +13,8 @@ import {
   getPublicGameState,
   getPrivatePlayerState,
   InternalGameState,
-  FullRoomState
+  FullRoomState,
+  WinnerResult
 } from '@solavin/shared';
 import { RoomsService } from '../rooms/rooms.service';
 import { GamesService } from '../games/games.service';
@@ -83,10 +84,9 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const result = this.gamesService.autoPassForTimeout(room);
     if (!result) return;
 
-    const { updatedRoom, pass, playerName } = result;
+    const { updatedRoom, pass, newWinners, playerName } = result;
     this.roomsService.setRoom(roomCode, updatedRoom);
 
-    // Notify room of timeout auto-pass
     this.server.to(`room:${roomCode}`).emit('notification', {
       type: 'warning',
       message: `⏱️ Time expired! ${playerName} auto-passed a card.`
@@ -99,12 +99,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     setTimeout(() => {
       this.broadcastRoomSync(updatedRoom);
-
-      // Check for winners
-      if (updatedRoom.winners.length > 0) {
-        const latestWinner = updatedRoom.winners[updatedRoom.winners.length - 1];
-        this.server.to(`room:${roomCode}`).emit('game:player-finished', latestWinner);
-      }
+      this.notifyNewWinners(updatedRoom, newWinners);
 
       if (updatedRoom.phase === 'GAME_COMPLETE') {
         this.clearTurnTimer(roomCode);
@@ -115,6 +110,40 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.scheduleTurnTimer(updatedRoom);
       }
     }, 300);
+  }
+
+  /**
+   * Only celebrate for the newly finished winner on their own screen,
+   * while other players receive a concise notification message.
+   */
+  private notifyNewWinners(room: InternalGameState, newWinners: WinnerResult[]): void {
+    if (!newWinners || newWinners.length === 0) return;
+
+    for (const winner of newWinners) {
+      const rankLabel =
+        winner.rank === 1
+          ? '1st Place'
+          : winner.rank === 2
+          ? '2nd Place'
+          : winner.rank === 3
+          ? '3rd Place'
+          : '4th Place';
+
+      for (const player of room.players) {
+        if (!player.socketId || !player.isConnected) continue;
+
+        if (player.id === winner.playerId) {
+          // Send victory celebration ONLY to the winner's screen
+          this.server.to(player.socketId).emit('game:player-finished', winner);
+        } else {
+          // Other players receive a notification message
+          this.server.to(player.socketId).emit('notification', {
+            type: 'success',
+            message: `🏆 ${winner.playerName} completed ${winner.itemName} and won ${rankLabel}!`
+          });
+        }
+      }
+    }
   }
 
   /**
@@ -260,7 +289,6 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         message: `Game started! 🎲 ${starter?.name} was randomly chosen to pass first!`
       });
 
-      // Schedule turn timer
       this.scheduleTurnTimer(dealtGame);
 
       return { success: true };
@@ -280,11 +308,10 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const room = this.roomsService.getRoom(context.roomCode);
     if (!room) return { success: false, error: 'Room not found' };
 
-    // Clear active turn timer
     this.clearTurnTimer(room.roomCode);
 
     try {
-      const { updatedRoom, pass } = this.gamesService.handlePassCard(
+      const { updatedRoom, pass, newWinners } = this.gamesService.handlePassCard(
         room,
         context.playerId,
         data.cardId
@@ -299,12 +326,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       setTimeout(() => {
         this.broadcastRoomSync(updatedRoom);
-
-        // Check if any winners finished
-        if (updatedRoom.winners.length > 0) {
-          const latestWinner = updatedRoom.winners[updatedRoom.winners.length - 1];
-          this.server.to(`room:${room.roomCode}`).emit('game:player-finished', latestWinner);
-        }
+        this.notifyNewWinners(updatedRoom, newWinners);
 
         if (updatedRoom.phase === 'GAME_COMPLETE') {
           this.clearTurnTimer(room.roomCode);
@@ -312,7 +334,6 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
             winners: updatedRoom.winners
           });
         } else {
-          // Schedule next player's turn timer
           this.scheduleTurnTimer(updatedRoom);
         }
       }, 300);

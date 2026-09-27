@@ -178,7 +178,7 @@ export function dealCards(
   const turnDeadline =
     state.turnTimerSeconds > 0 ? Date.now() + state.turnTimerSeconds * 1000 : null;
 
-  const dealtState: InternalGameState = {
+  return {
     ...state,
     phase: 'PLAYING',
     round: 1,
@@ -190,20 +190,26 @@ export function dealCards(
     lastPass: undefined,
     updatedAt: Date.now()
   };
-
-  return checkAndResolveWins(dealtState);
 }
 
 /**
  * Turn player passes 1 card anticlockwise to the next player.
- * Starter starts with 4 cards -> passes 1 -> has 3 cards.
- * Next player receives card -> has 5 cards -> passes 1 -> has 4 cards.
+ *
+ * Win Condition Rules:
+ * 1. A win is ONLY considered when a player holds exactly 4 cards and all 4 match!
+ *    - If a player holds 5 cards, they cannot win yet; they must choose and pass 1 card.
+ *      After passing, if their remaining 4 cards match, they win!
+ *    - If the starter receives their 4th card (from 3 to 4 cards) and all 4 match, they win!
+ * 2. Next turn after a win:
+ *    - If the passer won, the receiver now has 5 cards and passes next.
+ *    - If the receiver (starter) won upon receiving the 4th card, the passer (responsible player)
+ *      initiates the next pass to their remaining anticlockwise neighbor!
  */
 export function passCard(
   state: InternalGameState,
   playerId: string,
   cardId: string
-): { nextState: InternalGameState; pass: PassRecord } {
+): { nextState: InternalGameState; pass: PassRecord; newWinners: WinnerResult[] } {
   if (state.phase !== 'PLAYING') {
     throw new Error('Cannot pass card when not in PLAYING phase');
   }
@@ -230,7 +236,7 @@ export function passCard(
 
   const passedCard = currentPlayer.hand[cardIndex];
 
-  // Update hands: remove from current, add to target
+  // Update hands: remove passedCard from currentPlayer, add to target
   let updatedPlayers = state.players.map((p) => {
     if (p.id === currentPlayer.id) {
       return {
@@ -255,79 +261,77 @@ export function passCard(
     cardId: passedCard.id
   };
 
-  // Next turn player is target!
-  let nextTurnPlayerId: string = target.id;
-  const nextDeadline =
-    state.turnTimerSeconds > 0 ? Date.now() + state.turnTimerSeconds * 1000 : null;
-
-  const stateAfterPass: InternalGameState = {
-    ...state,
-    round: state.round + 1,
-    turnPlayerId: nextTurnPlayerId,
-    turnDeadline: nextDeadline,
-    players: updatedPlayers,
-    lastPass: passRecord,
-    updatedAt: Date.now()
-  };
-
-  // Check if any player has 4 matching cards and completes their set
-  const resolvedState = checkAndResolveWins(stateAfterPass);
-
-  // If nextTurnPlayer finished, advance turn to the next active player in ring
-  if (resolvedState.phase === 'PLAYING') {
-    const nextPlayerObj = resolvedState.players.find((p) => p.id === resolvedState.turnPlayerId);
-    if (!nextPlayerObj || nextPlayerObj.status !== 'active') {
-      const remainingActive = getActivePlayers(resolvedState);
-      if (remainingActive.length > 0) {
-        resolvedState.turnPlayerId = remainingActive[0].id;
-      }
-    }
-  }
-
-  return {
-    nextState: resolvedState,
-    pass: passRecord
-  };
-}
-
-/**
- * Check hands of all active players for 4 matching cards.
- * If someone holds 4 matching cards, they win and are marked 'finished'.
- */
-export function checkAndResolveWins(state: InternalGameState): InternalGameState {
+  const newWinners: WinnerResult[] = [];
   const currentWinners = [...state.winners];
   let nextRank = (currentWinners.length + 1) as 1 | 2 | 3 | 4;
 
-  let stateChanged = false;
-  let updatedPlayers = state.players.map((player) => ({ ...player }));
+  const getPlayer = (id: string) => updatedPlayers.find((p) => p.id === id)!;
 
-  // Check players with exactly 4 cards for completion
-  for (let i = 0; i < updatedPlayers.length; i++) {
-    const player = updatedPlayers[i];
-    if (player.status === 'active' && player.hand.length === 4 && isWinningHand(player.hand)) {
-      player.status = 'finished';
-      player.rank = nextRank;
-      player.completedItem = player.hand[0].itemName;
-      player.completedIcon = player.hand[0].itemIcon;
+  // 1. Check if currentPlayer (the passer) now has 4 matching cards
+  const passer = getPlayer(currentPlayer.id);
+  let passerWon = false;
+  if (passer.hand.length === 4 && isWinningHand(passer.hand)) {
+    passer.status = 'finished';
+    passer.rank = nextRank;
+    passer.completedItem = passer.hand[0].itemName;
+    passer.completedIcon = passer.hand[0].itemIcon;
 
-      currentWinners.push({
-        rank: nextRank,
-        playerId: player.id,
-        playerName: player.name,
-        itemName: player.hand[0].itemName,
-        itemIcon: player.hand[0].itemIcon,
-        roundCompleted: state.round
-      });
+    const win: WinnerResult = {
+      rank: nextRank,
+      playerId: passer.id,
+      playerName: passer.name,
+      itemName: passer.hand[0].itemName,
+      itemIcon: passer.hand[0].itemIcon,
+      roundCompleted: state.round
+    };
+    currentWinners.push(win);
+    newWinners.push(win);
+    nextRank = (nextRank + 1) as 1 | 2 | 3 | 4;
+    passerWon = true;
+  }
 
-      nextRank = (nextRank + 1) as 1 | 2 | 3 | 4;
-      stateChanged = true;
+  // 2. Check if target (receiver) had 3 cards and now has 4 matching cards (e.g. starter)
+  const receiver = getPlayer(target.id);
+  let receiverWon = false;
+  if (receiver.status === 'active' && receiver.hand.length === 4 && isWinningHand(receiver.hand)) {
+    receiver.status = 'finished';
+    receiver.rank = nextRank;
+    receiver.completedItem = receiver.hand[0].itemName;
+    receiver.completedIcon = receiver.hand[0].itemIcon;
+
+    const win: WinnerResult = {
+      rank: nextRank,
+      playerId: receiver.id,
+      playerName: receiver.name,
+      itemName: receiver.hand[0].itemName,
+      itemIcon: receiver.hand[0].itemIcon,
+      roundCompleted: state.round
+    };
+    currentWinners.push(win);
+    newWinners.push(win);
+    nextRank = (nextRank + 1) as 1 | 2 | 3 | 4;
+    receiverWon = true;
+  }
+
+  // 3. Determine next turn player:
+  // - If receiver didn't win, receiver now has 5 cards and passes next!
+  // - If receiver WON (i.e. starter made 4 upon receiving), remaining players all have 4 cards each.
+  //   The passer (responsible player) passes next: "next pass will be made by 4 bcz he was responsible as 1 make all 4"
+  let nextTurnPlayerId: string;
+  if (!receiverWon) {
+    nextTurnPlayerId = receiver.id;
+  } else {
+    // Receiver won! Passer makes the next pass if active, otherwise next active neighbor
+    if (passer.status === 'active') {
+      nextTurnPlayerId = passer.id;
+    } else {
+      const remainingActive = updatedPlayers.filter((p) => p.status === 'active');
+      nextTurnPlayerId = remainingActive.length > 0 ? remainingActive[0].id : '';
     }
   }
 
-  // Count remaining active players
+  // 4. Automatic 4th place when 3 players have finished
   const remainingActive = updatedPlayers.filter((p) => p.status === 'active');
-
-  // If only 1 active player remains, they are automatically 4th place
   if (remainingActive.length === 1 && currentWinners.length === 3) {
     const lastPlayer = remainingActive[0];
     lastPlayer.status = 'finished';
@@ -335,28 +339,41 @@ export function checkAndResolveWins(state: InternalGameState): InternalGameState
     lastPlayer.completedItem = lastPlayer.hand[0]?.itemName || 'Set';
     lastPlayer.completedIcon = lastPlayer.hand[0]?.itemIcon;
 
-    currentWinners.push({
+    const lastWin: WinnerResult = {
       rank: 4,
       playerId: lastPlayer.id,
       playerName: lastPlayer.name,
       itemName: lastPlayer.completedItem,
       itemIcon: lastPlayer.completedIcon,
       roundCompleted: state.round
-    });
-
-    stateChanged = true;
+    };
+    currentWinners.push(lastWin);
+    newWinners.push(lastWin);
   }
 
   const allFinished = updatedPlayers.every(
     (p) => p.status === 'finished' || p.status === 'spectating'
   );
 
-  return {
+  const nextDeadline =
+    state.turnTimerSeconds > 0 ? Date.now() + state.turnTimerSeconds * 1000 : null;
+
+  const nextState: InternalGameState = {
     ...state,
+    phase: allFinished ? 'GAME_COMPLETE' : 'PLAYING',
+    round: state.round + 1,
+    turnPlayerId: allFinished ? null : nextTurnPlayerId,
+    turnDeadline: allFinished ? null : nextDeadline,
     players: updatedPlayers,
     winners: currentWinners,
-    phase: allFinished ? 'GAME_COMPLETE' : state.phase,
-    updatedAt: stateChanged ? Date.now() : state.updatedAt
+    lastPass: passRecord,
+    updatedAt: Date.now()
+  };
+
+  return {
+    nextState,
+    pass: passRecord,
+    newWinners
   };
 }
 
@@ -370,7 +387,6 @@ export function validateInvariants(state: InternalGameState): { valid: boolean; 
     const allCards: Card[] = [];
     for (const player of state.players) {
       allCards.push(...player.hand);
-      // Valid hand sizes during game: 3, 4, or 5 cards
       if (player.status === 'active') {
         if (player.hand.length < 3 || player.hand.length > 5) {
           errors.push(

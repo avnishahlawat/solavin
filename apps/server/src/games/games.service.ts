@@ -4,6 +4,7 @@ import {
   dealCards,
   passCard,
   PassRecord,
+  WinnerResult,
   Theme,
   PRESET_THEMES,
   createCustomTheme
@@ -43,8 +44,9 @@ export class GamesService {
   ): {
     updatedRoom: InternalGameState;
     pass: PassRecord;
+    newWinners: WinnerResult[];
   } {
-    const { nextState, pass } = passCard(room, playerId, cardId);
+    const { nextState, pass, newWinners } = passCard(room, playerId, cardId);
 
     // If game reached completion, persist if db available
     if (nextState.phase === 'GAME_COMPLETE') {
@@ -53,7 +55,8 @@ export class GamesService {
 
     return {
       updatedRoom: nextState,
-      pass
+      pass,
+      newWinners
     };
   }
 
@@ -63,6 +66,7 @@ export class GamesService {
   autoPassForTimeout(room: InternalGameState): {
     updatedRoom: InternalGameState;
     pass: PassRecord;
+    newWinners: WinnerResult[];
     playerName: string;
   } | null {
     if (room.phase !== 'PLAYING' || !room.turnPlayerId) return null;
@@ -86,12 +90,15 @@ export class GamesService {
       }
     }
 
-    this.logger.log(`Auto-passing card ${minCard.itemName} for ${player.name} in room ${room.roomCode} due to timeout`);
-    const { updatedRoom, pass } = this.handlePassCard(room, player.id, minCard.id);
+    this.logger.log(
+      `Auto-passing card ${minCard.itemName} for ${player.name} in room ${room.roomCode} due to timeout`
+    );
+    const { updatedRoom, pass, newWinners } = this.handlePassCard(room, player.id, minCard.id);
 
     return {
       updatedRoom,
       pass,
+      newWinners,
       playerName: player.name
     };
   }
@@ -122,7 +129,8 @@ export class GamesService {
       if (found) theme = found;
     }
 
-    const turnTimer = options?.turnTimerSeconds !== undefined ? options.turnTimerSeconds : room.turnTimerSeconds;
+    const turnTimer =
+      options?.turnTimerSeconds !== undefined ? options.turnTimerSeconds : room.turnTimerSeconds;
 
     // Reset player statuses
     const resetPlayers = room.players.map((p) => ({

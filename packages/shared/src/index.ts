@@ -21,7 +21,6 @@ export {
   createGame,
   dealCards,
   passCard,
-  checkAndResolveWins,
   validateInvariants,
   getPublicGameState,
   getPrivatePlayerState
