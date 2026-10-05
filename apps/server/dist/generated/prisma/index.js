@@ -170,6 +170,22 @@ const config = {
         "fromEnvVar": null,
         "value": "windows",
         "native": true
+      },
+      {
+        "fromEnvVar": null,
+        "value": "debian-openssl-3.0.x"
+      },
+      {
+        "fromEnvVar": null,
+        "value": "debian-openssl-1.1.x"
+      },
+      {
+        "fromEnvVar": null,
+        "value": "rhel-openssl-1.0.x"
+      },
+      {
+        "fromEnvVar": null,
+        "value": "rhel-openssl-3.0.x"
       }
     ],
     "previewFeatures": [],
@@ -195,8 +211,8 @@ const config = {
       }
     }
   },
-  "inlineSchema": "generator client {\n  provider = \"prisma-client-js\"\n  output   = \"../src/generated/prisma\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Room {\n  id        String   @id @default(uuid())\n  code      String   @unique\n  hostId    String\n  status    String   @default(\"LOBBY\")\n  createdAt DateTime @default(now())\n  updatedAt DateTime @updatedAt\n}\n\nmodel GameRecord {\n  id           String            @id @default(uuid())\n  roomCode     String\n  themeId      String\n  themeName    String\n  totalRounds  Int\n  createdAt    DateTime          @default(now())\n  finishedAt   DateTime          @default(now())\n  participants GameParticipant[]\n}\n\nmodel GameParticipant {\n  id            String     @id @default(uuid())\n  gameId        String\n  game          GameRecord @relation(fields: [gameId], references: [id], onDelete: Cascade)\n  playerId      String\n  playerName    String\n  finalRank     Int\n  completedItem String?\n}\n\nmodel CustomThemeRecord {\n  id        String   @id @default(uuid())\n  name      String\n  itemsJson String // JSON stringified array of 4 items\n  createdAt DateTime @default(now())\n}\n",
-  "inlineSchemaHash": "16bfb94eef2605c8b41f1f18e3e916f676700df7f84c8853d01289c517a0abf4",
+  "inlineSchema": "generator client {\n  provider      = \"prisma-client-js\"\n  output        = \"../src/generated/prisma\"\n  binaryTargets = [\"native\", \"debian-openssl-3.0.x\", \"debian-openssl-1.1.x\", \"rhel-openssl-1.0.x\", \"rhel-openssl-3.0.x\"]\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Room {\n  id        String   @id @default(uuid())\n  code      String   @unique\n  hostId    String\n  status    String   @default(\"LOBBY\")\n  createdAt DateTime @default(now())\n  updatedAt DateTime @updatedAt\n}\n\nmodel GameRecord {\n  id           String            @id @default(uuid())\n  roomCode     String\n  themeId      String\n  themeName    String\n  totalRounds  Int\n  createdAt    DateTime          @default(now())\n  finishedAt   DateTime          @default(now())\n  participants GameParticipant[]\n}\n\nmodel GameParticipant {\n  id            String     @id @default(uuid())\n  gameId        String\n  game          GameRecord @relation(fields: [gameId], references: [id], onDelete: Cascade)\n  playerId      String\n  playerName    String\n  finalRank     Int\n  completedItem String?\n}\n\nmodel CustomThemeRecord {\n  id        String   @id @default(uuid())\n  name      String\n  itemsJson String // JSON stringified array of 4 items\n  createdAt DateTime @default(now())\n}\n",
+  "inlineSchemaHash": "50957dada685d8f374b852a437286913aafab3fb1aaa3c5dbce351bff48f6e3e",
   "copyEngine": true
 }
 
@@ -236,6 +252,22 @@ Object.assign(exports, Prisma)
 // file annotations for bundling tools to include these files
 path.join(__dirname, "query_engine-windows.dll.node");
 path.join(process.cwd(), "apps/server/src/generated/prisma/query_engine-windows.dll.node")
+
+// file annotations for bundling tools to include these files
+path.join(__dirname, "libquery_engine-debian-openssl-3.0.x.so.node");
+path.join(process.cwd(), "apps/server/src/generated/prisma/libquery_engine-debian-openssl-3.0.x.so.node")
+
+// file annotations for bundling tools to include these files
+path.join(__dirname, "libquery_engine-debian-openssl-1.1.x.so.node");
+path.join(process.cwd(), "apps/server/src/generated/prisma/libquery_engine-debian-openssl-1.1.x.so.node")
+
+// file annotations for bundling tools to include these files
+path.join(__dirname, "libquery_engine-rhel-openssl-1.0.x.so.node");
+path.join(process.cwd(), "apps/server/src/generated/prisma/libquery_engine-rhel-openssl-1.0.x.so.node")
+
+// file annotations for bundling tools to include these files
+path.join(__dirname, "libquery_engine-rhel-openssl-3.0.x.so.node");
+path.join(process.cwd(), "apps/server/src/generated/prisma/libquery_engine-rhel-openssl-3.0.x.so.node")
 // file annotations for bundling tools to include these files
 path.join(__dirname, "schema.prisma");
 path.join(process.cwd(), "apps/server/src/generated/prisma/schema.prisma")
