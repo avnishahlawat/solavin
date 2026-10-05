@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Room {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  hostId    String
+  status    String   @default("LOBBY")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GameRecord {
+  id           String            @id @default(uuid())
+  roomCode     String
+  themeId      String
+  themeName    String
+  totalRounds  Int
+  createdAt    DateTime          @default(now())
+  finishedAt   DateTime          @default(now())
+  participants GameParticipant[]
+}
+
+model GameParticipant {
+  id            String     @id @default(uuid())
+  gameId        String
+  game          GameRecord @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  playerId      String
+  playerName    String
+  finalRank     Int
+  completedItem String?
+}
+
+model CustomThemeRecord {
+  id        String   @id @default(uuid())
+  name      String
+  itemsJson String // JSON stringified array of 4 items
+  createdAt DateTime @default(now())
+}
