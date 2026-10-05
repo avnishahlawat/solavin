@@ -9,10 +9,12 @@ import {
   Play,
   Layers,
   Edit2,
-  Clock
+  Clock,
+  Zap,
+  ShieldAlert
 } from 'lucide-react';
 import QRCode from 'qrcode';
-import { PublicGameState, PublicPlayer } from '@solavin/shared';
+import { PublicGameState, PublicPlayer, GameMode } from '@solavin/shared';
 
 interface LobbyViewProps {
   state: PublicGameState;
@@ -20,6 +22,7 @@ interface LobbyViewProps {
   onStartGame: () => void;
   onChangeTheme?: () => void;
   onUpdateTimer?: (seconds: number) => void;
+  onUpdateGameMode?: (mode: GameMode) => void;
 }
 
 export const LobbyView: React.FC<LobbyViewProps> = ({
@@ -27,7 +30,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   currentPlayerId,
   onStartGame,
   onChangeTheme,
-  onUpdateTimer
+  onUpdateTimer,
+  onUpdateGameMode
 }) => {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -176,10 +180,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           </div>
         </div>
 
-        {/* Settings Bar: Theme & Turn Timer */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Settings Bar: Theme, Game Mode & Turn Timer */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Deck Theme */}
-          <div className="bg-surface-100 border border-card-border rounded-2xl p-5">
+          <div className="bg-surface-100 border border-card-border rounded-2xl p-5 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Layers className="w-4 h-4 text-cyan-400" />
@@ -199,8 +203,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             </div>
 
             <div>
-              <h4 className="font-extrabold text-base text-white">{state.theme.name}</h4>
-              <div className="flex items-center gap-2 mt-2">
+              <h4 className="font-extrabold text-sm sm:text-base text-white truncate">{state.theme.name}</h4>
+              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                 {state.theme.items.map((item) => (
                   <span
                     key={item.id}
@@ -214,8 +218,66 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             </div>
           </div>
 
+          {/* Game Mode */}
+          <div className="bg-surface-100 border border-card-border rounded-2xl p-5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                {state.gameMode === 'pro' ? (
+                  <ShieldAlert className="w-4 h-4 text-amber-400" />
+                ) : (
+                  <Zap className="w-4 h-4 text-indigo-400" />
+                )}
+                <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300">
+                  Game Mode
+                </h3>
+              </div>
+              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                state.gameMode === 'pro'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                  : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
+              }`}>
+                {state.gameMode === 'pro' ? 'PRO' : 'CLASSIC'}
+              </span>
+            </div>
+
+            {isHost && onUpdateGameMode ? (
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => onUpdateGameMode('classic')}
+                  className={`py-1.5 px-2 text-center rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    state.gameMode === 'classic'
+                      ? 'bg-indigo-950/50 border-indigo-400 text-indigo-300 ring-1 ring-indigo-400'
+                      : 'bg-surface-50 border-card-border text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Zap className="w-3 h-3" />
+                  <span>Classic</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onUpdateGameMode('pro')}
+                  className={`py-1.5 px-2 text-center rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    state.gameMode === 'pro'
+                      ? 'bg-amber-950/50 border-amber-400 text-amber-300 ring-1 ring-amber-400'
+                      : 'bg-surface-50 border-card-border text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <ShieldAlert className="w-3 h-3" />
+                  <span>Pro Mode</span>
+                </button>
+              </div>
+            ) : null}
+
+            <p className="text-[11px] text-slate-400 mt-2">
+              {state.gameMode === 'pro'
+                ? 'Pro Mode: Players cannot pass the card they just received!'
+                : 'Classic Mode: Any card in hand can be passed freely.'}
+            </p>
+          </div>
+
           {/* Turn Timer Configuration */}
-          <div className="bg-surface-100 border border-card-border rounded-2xl p-5">
+          <div className="bg-surface-100 border border-card-border rounded-2xl p-5 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-400" />
@@ -224,12 +286,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 </h3>
               </div>
               <span className="text-xs font-mono font-bold text-amber-400">
-                {state.turnTimerSeconds === 0 ? 'No Timer' : `${state.turnTimerSeconds}s per turn`}
+                {state.turnTimerSeconds === 0 ? 'No Timer' : `${state.turnTimerSeconds}s`}
               </span>
             </div>
 
             {isHost && onUpdateTimer ? (
-              <div className="grid grid-cols-5 gap-1.5 mt-2">
+              <div className="grid grid-cols-5 gap-1 mt-1">
                 {[
                   { label: '15s', val: 15 },
                   { label: '30s', val: 30 },
@@ -241,7 +303,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     key={t.val}
                     type="button"
                     onClick={() => onUpdateTimer(t.val)}
-                    className={`py-1.5 text-center rounded-lg border text-xs font-semibold transition-all ${
+                    className={`py-1.5 text-center rounded-lg border text-[11px] font-semibold transition-all ${
                       state.turnTimerSeconds === t.val
                         ? 'bg-amber-950/40 border-amber-400 text-amber-300'
                         : 'bg-surface-50 border-card-border text-slate-400 hover:text-white'
@@ -251,13 +313,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   </button>
                 ))}
               </div>
-            ) : (
-              <p className="text-xs text-slate-400 mt-2">
-                {state.turnTimerSeconds === 0
-                  ? 'Casual mode with no timer restriction.'
-                  : `Each player has ${state.turnTimerSeconds} seconds to choose and pass a card.`}
-              </p>
-            )}
+            ) : null}
+
+            <p className="text-[11px] text-slate-400 mt-2">
+              {state.turnTimerSeconds === 0
+                ? 'Casual mode with no timer restriction.'
+                : `${state.turnTimerSeconds} seconds allowed to pass a card.`}
+            </p>
           </div>
         </div>
 
@@ -310,3 +372,4 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     </div>
   );
 };
+

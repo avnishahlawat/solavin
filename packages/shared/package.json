@@ -6,7 +6,8 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "watch": "tsc -w"
+    "watch": "tsc -w",
+    "test": "npx tsx --test src/engine/engine.spec.ts"
   },
   "devDependencies": {
     "@types/node": "^20.12.12",

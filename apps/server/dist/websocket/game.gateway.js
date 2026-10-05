@@ -132,7 +132,7 @@ let GameGateway = GameGateway_1 = class GameGateway {
     }
     handleCreateRoom(client, data) {
         try {
-            const { room, player } = this.roomsService.createRoom(data.playerName, client.id, data.themeId, data.customTheme, data.turnTimerSeconds);
+            const { room, player } = this.roomsService.createRoom(data.playerName, client.id, data.themeId, data.customTheme, data.turnTimerSeconds, data.gameMode);
             client.join(`room:${room.roomCode}`);
             this.broadcastRoomSync(room);
             return {
@@ -179,7 +179,7 @@ let GameGateway = GameGateway_1 = class GameGateway {
         if (!context)
             return { success: false, error: 'Not in a room' };
         try {
-            const updated = this.roomsService.updateSettings(context.roomCode, context.playerId, data.themeId, data.customTheme, data.turnTimerSeconds);
+            const updated = this.roomsService.updateSettings(context.roomCode, context.playerId, data.themeId, data.customTheme, data.turnTimerSeconds, data.gameMode);
             this.broadcastRoomSync(updated);
             return { success: true };
         }

@@ -154,3 +154,120 @@ describe('SOLAVIN Turn-Based Game Engine', () => {
     }
   });
 });
+
+describe('Pro Mode vs Classic Mode Rules', () => {
+    it('In Classic Mode, receiver with 5 cards can pass the same card received', () => {
+      let game = createGame('TEST_CLASSIC', 'p1', DEFAULT_THEME, 30, 'classic');
+      game.players = [
+        { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [
+          { id: 'c1', itemId: 'dune', itemName: 'Dune' },
+          { id: 'c2', itemId: 'dune', itemName: 'Dune' },
+          { id: 'c3', itemId: 'dune', itemName: 'Dune' },
+          { id: 'c4', itemId: 'inception', itemName: 'Inception' }
+        ], isConnected: true },
+        { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [
+          { id: 'c5', itemId: 'avengers', itemName: 'Avengers' },
+          { id: 'c6', itemId: 'avengers', itemName: 'Avengers' },
+          { id: 'c7', itemId: 'avengers', itemName: 'Avengers' },
+          { id: 'c8', itemId: 'avengers', itemName: 'Avengers' }
+        ], isConnected: true },
+        { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], isConnected: true },
+        { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], isConnected: true }
+      ];
+      game.phase = 'PLAYING';
+      game.turnPlayerId = 'p1';
+      game.starterPlayerId = 'p1';
+
+      // P1 passes c4 (inception) to P4 (seat 0 -> seat 3 anticlockwise)
+      const pass1 = passCard(game, 'p1', 'c4');
+      assert.strictEqual(pass1.nextState.turnPlayerId, 'p4');
+
+      // P4 now has 5 cards and passes the exact received card c4 back around to P3
+      // In classic mode, this should succeed without throwing!
+      assert.doesNotThrow(() => {
+        passCard(pass1.nextState, 'p4', 'c4');
+      });
+    });
+
+    it('In Pro Mode, receiver with 5 cards CANNOT pass the exact card received', () => {
+      let game = createGame('TEST_PRO_1', 'p1', DEFAULT_THEME, 30, 'pro');
+      game.players = [
+        { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [
+          { id: 'c1', itemId: 'dune', itemName: 'Dune' },
+          { id: 'c2', itemId: 'dune', itemName: 'Dune' },
+          { id: 'c3', itemId: 'dune', itemName: 'Dune' },
+          { id: 'c4', itemId: 'inception', itemName: 'Inception' }
+        ], isConnected: true },
+        { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [], isConnected: true },
+        { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], isConnected: true },
+        { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [
+          { id: 'c9', itemId: 'matrix', itemName: 'Matrix' },
+          { id: 'c10', itemId: 'matrix', itemName: 'Matrix' },
+          { id: 'c11', itemId: 'matrix', itemName: 'Matrix' },
+          { id: 'c12', itemId: 'matrix', itemName: 'Matrix' }
+        ], isConnected: true }
+      ];
+      game.phase = 'PLAYING';
+      game.turnPlayerId = 'p1';
+      game.starterPlayerId = 'p1';
+
+      // P1 (starter, 4 cards) passes c4 to P4 (P4 now has 5 cards: c9, c10, c11, c12, c4)
+      const pass1 = passCard(game, 'p1', 'c4');
+      assert.strictEqual(pass1.nextState.turnPlayerId, 'p4');
+
+      const p4Private = getPrivatePlayerState(pass1.nextState, 'p4');
+      assert.strictEqual(p4Private?.forbiddenCardId, 'c4');
+
+      // P4 attempts to pass c4 (the card just received) -> must throw error
+      assert.throws(() => {
+        passCard(pass1.nextState, 'p4', 'c4');
+      }, /In Pro Mode, you cannot pass the card you just received/);
+
+      // P4 passes another card (c9) -> must succeed!
+      assert.doesNotThrow(() => {
+        const pass2 = passCard(pass1.nextState, 'p4', 'c9');
+        assert.strictEqual(pass2.nextState.turnPlayerId, 'p3');
+      });
+    });
+
+    it('In Pro Mode, starter player who was at 3 cards and reaches 4 cards CAN pass the received card', () => {
+      let game = createGame('TEST_PRO_STARTER', 'p1', DEFAULT_THEME, 30, 'pro');
+      game.players = [
+        { id: 'p1', name: 'Arya', isHost: true, seatIndex: 0, status: 'active', hand: [
+          { id: 'c1', itemId: 'dune', itemName: 'Dune' },
+          { id: 'c2', itemId: 'dune', itemName: 'Dune' },
+          { id: 'c3', itemId: 'dune', itemName: 'Dune' } // P1 is starter and currently has 3 cards
+        ], isConnected: true },
+        { id: 'p2', name: 'Rahul', isHost: false, seatIndex: 1, status: 'active', hand: [
+          { id: 'c5', itemId: 'avengers', itemName: 'Avengers' },
+          { id: 'c6', itemId: 'avengers', itemName: 'Avengers' },
+          { id: 'c7', itemId: 'avengers', itemName: 'Avengers' },
+          { id: 'c8', itemId: 'avengers', itemName: 'Avengers' },
+          { id: 'c4', itemId: 'inception', itemName: 'Inception' }
+        ], isConnected: true },
+        { id: 'p3', name: 'Priya', isHost: false, seatIndex: 2, status: 'active', hand: [], isConnected: true },
+        { id: 'p4', name: 'Aman', isHost: false, seatIndex: 3, status: 'active', hand: [], isConnected: true }
+      ];
+      game.phase = 'PLAYING';
+      game.turnPlayerId = 'p2';
+      game.starterPlayerId = 'p1';
+
+      // P2 passes c4 (inception) to P1 (anticlockwise neighbor from seat 1 is seat 0)
+      const pass1 = passCard(game, 'p2', 'c4');
+
+      // P1 now receives c4 and has 4 cards (c1, c2, c3, c4), which is not a complete set
+      assert.strictEqual(pass1.nextState.turnPlayerId, 'p1');
+      const p1After = pass1.nextState.players.find(p => p.id === 'p1')!;
+      assert.strictEqual(p1After.hand.length, 4);
+
+      // In Pro Mode, since P1 has 4 cards (was the starter receiving to 4), P1 CAN pass c4!
+      const p1Private = getPrivatePlayerState(pass1.nextState, 'p1');
+      assert.strictEqual(p1Private?.forbiddenCardId, undefined);
+
+      assert.doesNotThrow(() => {
+        const pass2 = passCard(pass1.nextState, 'p1', 'c4');
+        assert.strictEqual(pass2.nextState.turnPlayerId, 'p4');
+      });
+    });
+  });
+

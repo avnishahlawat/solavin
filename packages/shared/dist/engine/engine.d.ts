@@ -1,4 +1,4 @@
-import { Card, GamePhase, PassRecord, PrivatePlayerState, PublicGameState, Theme, WinnerResult } from '../types';
+import { Card, GameMode, GamePhase, PassRecord, PrivatePlayerState, PublicGameState, Theme, WinnerResult } from '../types';
 export interface InternalPlayer {
     id: string;
     name: string;
@@ -16,6 +16,7 @@ export interface InternalGameState {
     roomCode: string;
     phase: GamePhase;
     round: number;
+    gameMode: GameMode;
     theme: Theme;
     hostId: string;
     turnPlayerId: string | null;
@@ -59,7 +60,7 @@ export declare function getPassingNeighbor(playerId: string, activePlayers: Inte
 /**
  * Create a new Game state for a room
  */
-export declare function createGame(roomCode: string, hostId: string, theme?: Theme, turnTimerSeconds?: number): InternalGameState;
+export declare function createGame(roomCode: string, hostId: string, theme?: Theme, turnTimerSeconds?: number, gameMode?: GameMode): InternalGameState;
 /**
  * Deal 16 cards to 4 players and randomly select starter
  */
@@ -76,6 +77,9 @@ export declare function dealCards(state: InternalGameState, randomFn?: () => num
  *    - If the passer won, the receiver now has 5 cards and passes next.
  *    - If the receiver (starter) won upon receiving the 4th card, the passer (responsible player)
  *      initiates the next pass to their remaining anticlockwise neighbor!
+ * 3. Pro Mode Rules:
+ *    - In Pro Mode, a player who received a card and now holds 5 cards CANNOT pass the exact card they just received.
+ *    - Starter who was at 3 cards and now holds 4 cards after receiving CAN pass any card (including the received card).
  */
 export declare function passCard(state: InternalGameState, playerId: string, cardId: string): {
     nextState: InternalGameState;

@@ -173,6 +173,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       themeId?: string;
       customTheme?: { name: string; items: string[] };
       turnTimerSeconds?: number;
+      gameMode?: import('@solavin/shared').GameMode;
     }
   ) {
     try {
@@ -181,7 +182,8 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         client.id,
         data.themeId,
         data.customTheme,
-        data.turnTimerSeconds
+        data.turnTimerSeconds,
+        data.gameMode
       );
 
       client.join(`room:${room.roomCode}`);
@@ -250,6 +252,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       themeId?: string;
       customTheme?: { name: string; items: string[] };
       turnTimerSeconds?: number;
+      gameMode?: import('@solavin/shared').GameMode;
     }
   ) {
     const context = this.roomsService.getPlayerContext(client.id);
@@ -261,7 +264,8 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         context.playerId,
         data.themeId,
         data.customTheme,
-        data.turnTimerSeconds
+        data.turnTimerSeconds,
+        data.gameMode
       );
       this.broadcastRoomSync(updated);
       return { success: true };
@@ -354,6 +358,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       themeId?: string;
       customTheme?: { name: string; items: string[] };
       turnTimerSeconds?: number;
+      gameMode?: import('@solavin/shared').GameMode;
     }
   ) {
     const context = this.roomsService.getPlayerContext(client.id);

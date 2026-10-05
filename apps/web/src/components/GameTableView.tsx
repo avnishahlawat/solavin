@@ -13,7 +13,9 @@ import {
   Crown,
   Sparkles,
   ArrowRight,
-  Dice5
+  Dice5,
+  Zap,
+  ShieldAlert
 } from 'lucide-react';
 
 interface GameTableViewProps {
@@ -188,17 +190,27 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
           <div className="relative w-44 h-44 sm:w-60 sm:h-60 rounded-full border-2 border-dashed border-card-border/80 flex flex-col items-center justify-center text-center p-4 bg-surface-100/50 backdrop-blur-xs shadow-inner">
             <div className="absolute inset-0 rounded-full border border-indigo-500/20 animate-spin-slow pointer-events-none" />
 
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-slate-400">
                 ROUND {String(publicState.round).padStart(2, '0')}
               </span>
               <div className="text-sm sm:text-base font-extrabold text-white">
                 {publicState.theme.name}
               </div>
+              <div className="flex items-center justify-center pt-0.5">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                  publicState.gameMode === 'pro'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                }`}>
+                  {publicState.gameMode === 'pro' ? <ShieldAlert className="w-3 h-3" /> : <Zap className="w-3 h-3" />}
+                  <span>{publicState.gameMode === 'pro' ? 'PRO MODE' : 'CLASSIC'}</span>
+                </span>
+              </div>
             </div>
 
             {/* Turn & Timer Display */}
-            <div className="mt-3 flex flex-col items-center gap-1">
+            <div className="mt-2.5 flex flex-col items-center gap-1">
               {isYourTurn ? (
                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-600 text-white text-xs font-bold shadow-lg shadow-indigo-600/40 animate-pulse">
                   <Sparkles className="w-3.5 h-3.5" />
@@ -218,7 +230,7 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
                   )}
                 </div>
               )}
-              <span className="text-[10px] text-slate-500 flex items-center gap-1 mt-1">
+              <span className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
                 Anticlockwise Pass ↺
               </span>
             </div>
@@ -267,6 +279,12 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
             <span className="text-xs font-mono font-bold text-slate-400 bg-surface-50 px-2 py-0.5 rounded-lg border border-card-border">
               {privateState?.cards.length} cards
             </span>
+            {publicState.gameMode === 'pro' && (
+              <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 flex items-center gap-1">
+                <ShieldAlert className="w-3 h-3 text-amber-400" />
+                PRO
+              </span>
+            )}
             {privateState?.player.isHost && (
               <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
                 HOST
@@ -317,27 +335,39 @@ export const GameTableView: React.FC<GameTableViewProps> = ({
 
         {/* Player's Cards Hand (can be 3, 4, or 5 cards!) */}
         <div className="flex items-center justify-center gap-2 sm:gap-4 overflow-x-auto py-2 px-1 max-w-full">
-          {privateState?.cards.map((card: CardType) => (
-            <CardItem
-              key={card.id}
-              card={card}
-              disabled={!isYourTurn || isPassing}
-              onSelect={() => {
-                if (isYourTurn && !isPassing) {
-                  onPassCard(card.id);
-                }
-              }}
-            />
-          ))}
+          {privateState?.cards.map((card: CardType) => {
+            const isForbidden = isYourTurn && card.id === privateState?.forbiddenCardId;
+            return (
+              <CardItem
+                key={card.id}
+                card={card}
+                disabled={!isYourTurn || isPassing}
+                isForbidden={isForbidden}
+                forbiddenReason="In Pro Mode, you cannot pass the card you just received from your neighbor."
+                onSelect={() => {
+                  if (isYourTurn && !isPassing && !isForbidden) {
+                    onPassCard(card.id);
+                  }
+                }}
+              />
+            );
+          })}
         </div>
 
         {/* Guidance footnote */}
         <div className="mt-2 text-center text-xs text-slate-500">
           {isCurrentPlayerActive ? (
             isYourTurn ? (
-              <span className="text-indigo-300 font-medium">
-                Tap the card you want to discard. It will pass anticlockwise to {privateState?.passingTo?.name}.
-              </span>
+              privateState?.forbiddenCardId ? (
+                <span className="text-amber-300 font-medium flex items-center justify-center gap-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Pro Mode Active: You cannot pass the card just received (locked). Select 1 of your other 4 cards.</span>
+                </span>
+              ) : (
+                <span className="text-indigo-300 font-medium">
+                  Tap the card you want to discard. It will pass anticlockwise to {privateState?.passingTo?.name}.
+                </span>
+              )
             ) : (
               <span>Inspect your cards and prepare your strategy while opponent decides</span>
             )

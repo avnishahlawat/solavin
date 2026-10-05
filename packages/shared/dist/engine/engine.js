@@ -90,11 +90,12 @@ function getPassingNeighbor(playerId, activePlayers) {
 /**
  * Create a new Game state for a room
  */
-function createGame(roomCode, hostId, theme = themes_1.DEFAULT_THEME, turnTimerSeconds = 30) {
+function createGame(roomCode, hostId, theme = themes_1.DEFAULT_THEME, turnTimerSeconds = 30, gameMode = 'classic') {
     return {
         roomCode,
         phase: 'LOBBY',
         round: 0,
+        gameMode,
         theme,
         hostId,
         turnPlayerId: null,
@@ -132,6 +133,7 @@ function dealCards(state, randomFn = Math.random) {
         ...state,
         phase: 'PLAYING',
         round: 1,
+        gameMode: state.gameMode || 'classic',
         turnPlayerId: starter.id,
         starterPlayerId: starter.id,
         turnDeadline,
@@ -153,6 +155,9 @@ function dealCards(state, randomFn = Math.random) {
  *    - If the passer won, the receiver now has 5 cards and passes next.
  *    - If the receiver (starter) won upon receiving the 4th card, the passer (responsible player)
  *      initiates the next pass to their remaining anticlockwise neighbor!
+ * 3. Pro Mode Rules:
+ *    - In Pro Mode, a player who received a card and now holds 5 cards CANNOT pass the exact card they just received.
+ *    - Starter who was at 3 cards and now holds 4 cards after receiving CAN pass any card (including the received card).
  */
 function passCard(state, playerId, cardId) {
     if (state.phase !== 'PLAYING') {
@@ -169,6 +174,15 @@ function passCard(state, playerId, cardId) {
     const cardIndex = currentPlayer.hand.findIndex((c) => c.id === cardId);
     if (cardIndex === -1) {
         throw new Error(`Card ${cardId} is not in player hand`);
+    }
+    // Pro Mode rule check: cannot pass the same card received if player has 5 cards (non-starter pass)
+    if (state.gameMode === 'pro') {
+        const isReceivedCard = state.lastPass &&
+            state.lastPass.toPlayerId === currentPlayer.id &&
+            state.lastPass.cardId === cardId;
+        if (isReceivedCard && currentPlayer.hand.length > 4) {
+            throw new Error('In Pro Mode, you cannot pass the card you just received');
+        }
     }
     const { target } = getPassingNeighbor(playerId, active);
     if (!target) {
@@ -249,6 +263,7 @@ function passCard(state, playerId, cardId) {
     // - If receiver WON (i.e. starter made 4 upon receiving), remaining players all have 4 cards each.
     //   The passer (responsible player) passes next: "next pass will be made by 4 bcz he was responsible as 1 make all 4"
     let nextTurnPlayerId;
+    let nextStarterPlayerId = state.starterPlayerId;
     if (!receiverWon) {
         nextTurnPlayerId = receiver.id;
     }
@@ -261,6 +276,7 @@ function passCard(state, playerId, cardId) {
             const remainingActive = updatedPlayers.filter((p) => p.status === 'active');
             nextTurnPlayerId = remainingActive.length > 0 ? remainingActive[0].id : '';
         }
+        nextStarterPlayerId = nextTurnPlayerId || null;
     }
     // 4. Automatic 4th place when 3 players have finished
     const remainingActive = updatedPlayers.filter((p) => p.status === 'active');
@@ -288,6 +304,7 @@ function passCard(state, playerId, cardId) {
         phase: allFinished ? 'GAME_COMPLETE' : 'PLAYING',
         round: state.round + 1,
         turnPlayerId: allFinished ? null : nextTurnPlayerId,
+        starterPlayerId: nextStarterPlayerId,
         turnDeadline: allFinished ? null : nextDeadline,
         players: updatedPlayers,
         winners: currentWinners,
@@ -358,6 +375,7 @@ function getPublicGameState(state) {
         roomCode: state.roomCode,
         phase: state.phase,
         round: state.round,
+        gameMode: state.gameMode || 'classic',
         players: publicPlayers,
         theme: state.theme,
         hostId: state.hostId,
@@ -382,6 +400,16 @@ function getPrivatePlayerState(state, playerId) {
         return undefined;
     const activePlayers = getActivePlayers(state);
     const { target, source } = getPassingNeighbor(playerId, activePlayers);
+    let forbiddenCardId = undefined;
+    if (state.gameMode === 'pro' &&
+        state.turnPlayerId === playerId &&
+        state.phase === 'PLAYING' &&
+        player.hand.length > 4 &&
+        state.lastPass &&
+        state.lastPass.toPlayerId === playerId &&
+        state.lastPass.cardId) {
+        forbiddenCardId = state.lastPass.cardId;
+    }
     const publicPlayer = {
         id: player.id,
         name: player.name,
@@ -397,6 +425,7 @@ function getPrivatePlayerState(state, playerId) {
         player: publicPlayer,
         cards: player.hand,
         isYourTurn: state.turnPlayerId === playerId && state.phase === 'PLAYING',
+        forbiddenCardId,
         passingTo: target
             ? {
                 id: target.id,

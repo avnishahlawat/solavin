@@ -24,6 +24,7 @@ export declare class GamesService {
             items: string[];
         };
         turnTimerSeconds?: number;
+        gameMode?: import('@solavin/shared').GameMode;
     }): InternalGameState;
     private persistGameRecord;
 }

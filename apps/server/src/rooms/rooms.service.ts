@@ -34,7 +34,8 @@ export class RoomsService {
     socketId: string,
     themeId?: string,
     customThemeData?: { name: string; items: string[] },
-    turnTimerSeconds: number = 30
+    turnTimerSeconds: number = 30,
+    gameMode: import('@solavin/shared').GameMode = 'classic'
   ): { room: InternalGameState; player: InternalPlayer } {
     const trimmedName = playerName.trim();
     if (!trimmedName) {
@@ -63,13 +64,13 @@ export class RoomsService {
       socketId
     };
 
-    const newGame = createGame(roomCode, playerId, selectedTheme, turnTimerSeconds);
+    const newGame = createGame(roomCode, playerId, selectedTheme, turnTimerSeconds, gameMode);
     newGame.players = [hostPlayer];
 
     this.rooms.set(roomCode, newGame);
     this.socketMap.set(socketId, { roomCode, playerId });
 
-    this.logger.log(`Room created: ${roomCode} by ${trimmedName} (timer: ${turnTimerSeconds}s)`);
+    this.logger.log(`Room created: ${roomCode} by ${trimmedName} (mode: ${gameMode}, timer: ${turnTimerSeconds}s)`);
     return { room: newGame, player: hostPlayer };
   }
 
@@ -152,7 +153,8 @@ export class RoomsService {
     hostPlayerId: string,
     themeId?: string,
     customThemeData?: { name: string; items: string[] },
-    turnTimerSeconds?: number
+    turnTimerSeconds?: number,
+    gameMode?: import('@solavin/shared').GameMode
   ): InternalGameState {
     const room = this.rooms.get(roomCode);
     if (!room) throw new NotFoundException('Room not found');
@@ -174,6 +176,10 @@ export class RoomsService {
 
     if (turnTimerSeconds !== undefined && turnTimerSeconds >= 0) {
       room.turnTimerSeconds = turnTimerSeconds;
+    }
+
+    if (gameMode) {
+      room.gameMode = gameMode;
     }
 
     room.updatedAt = Date.now();

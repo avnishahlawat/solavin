@@ -5,7 +5,8 @@ import {
   PublicGameState,
   PrivatePlayerState,
   WinnerResult,
-  PassRecord
+  PassRecord,
+  GameMode
 } from '@solavin/shared';
 import { sound } from '../lib/sound';
 
@@ -129,13 +130,14 @@ export function useSocket() {
       playerName: string,
       themeId?: string,
       customTheme?: { name: string; items: string[] },
-      turnTimerSeconds: number = 30
+      turnTimerSeconds: number = 30,
+      gameMode: GameMode = 'classic'
     ): Promise<{ success: boolean; error?: string }> => {
       return new Promise((resolve) => {
         if (!socketRef.current) return resolve({ success: false, error: 'Socket not connected' });
         socketRef.current.emit(
           'room:create',
-          { playerName, themeId, customTheme, turnTimerSeconds },
+          { playerName, themeId, customTheme, turnTimerSeconds, gameMode },
           (res: { success: boolean; roomCode?: string; playerId?: string; error?: string }) => {
             if (res.success && res.roomCode && res.playerId) {
               localStorage.setItem(
@@ -184,6 +186,7 @@ export function useSocket() {
       themeId?: string;
       customTheme?: { name: string; items: string[] };
       turnTimerSeconds?: number;
+      gameMode?: GameMode;
     }) => {
       if (!socketRef.current) return;
       socketRef.current.emit('room:update-settings', payload);
@@ -208,6 +211,7 @@ export function useSocket() {
       themeId?: string;
       customTheme?: { name: string; items: string[] };
       turnTimerSeconds?: number;
+      gameMode?: GameMode;
     }) => {
       if (!socketRef.current) return;
       socketRef.current.emit('game:restart', options);

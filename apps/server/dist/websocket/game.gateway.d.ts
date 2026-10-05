@@ -25,6 +25,7 @@ export declare class GameGateway implements OnGatewayConnection, OnGatewayDiscon
             items: string[];
         };
         turnTimerSeconds?: number;
+        gameMode?: import('@solavin/shared').GameMode;
     }): {
         success: boolean;
         roomCode: string;
@@ -58,6 +59,7 @@ export declare class GameGateway implements OnGatewayConnection, OnGatewayDiscon
             items: string[];
         };
         turnTimerSeconds?: number;
+        gameMode?: import('@solavin/shared').GameMode;
     }): {
         success: boolean;
         error?: undefined;
@@ -89,6 +91,7 @@ export declare class GameGateway implements OnGatewayConnection, OnGatewayDiscon
             items: string[];
         };
         turnTimerSeconds?: number;
+        gameMode?: import('@solavin/shared').GameMode;
     }): {
         success: boolean;
         error?: undefined;

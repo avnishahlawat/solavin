@@ -1,6 +1,7 @@
 import React from 'react';
-import { Volume2, VolumeX, HelpCircle, LogOut, Radio } from 'lucide-react';
+import { Volume2, VolumeX, HelpCircle, LogOut, Radio, Sun, Moon, Contrast } from 'lucide-react';
 import { sound } from '../lib/sound';
+import { useTheme } from '../hooks/useTheme';
 
 interface HeaderProps {
   roomCode?: string;
@@ -16,10 +17,23 @@ export const Header: React.FC<HeaderProps> = ({
   onLeaveRoom,
 }) => {
   const [isSoundOn, setIsSoundOn] = React.useState(sound.isEnabled());
+  const { theme, cycleTheme } = useTheme();
 
   const toggleSound = () => {
     const next = sound.toggle();
     setIsSoundOn(next);
+  };
+
+  const getThemeIcon = () => {
+    if (theme === 'light') return <Sun className="w-4 h-4 text-amber-500" />;
+    if (theme === 'bw') return <Contrast className="w-4 h-4 text-white" />;
+    return <Moon className="w-4 h-4 text-indigo-400" />;
+  };
+
+  const getThemeTitle = () => {
+    if (theme === 'dark') return 'Current: Dark Theme (Click to switch to Light)';
+    if (theme === 'light') return 'Current: Light Theme (Click to switch to Black & White)';
+    return 'Current: Black & White Theme (Click to switch to Dark)';
   };
 
   return (
@@ -72,6 +86,19 @@ export const Header: React.FC<HeaderProps> = ({
             <Radio className="w-3 h-3" />
             <span className="hidden md:inline">{isConnected ? 'Online' : 'Connecting'}</span>
           </div>
+
+          {/* Theme Switcher Toggle */}
+          <button
+            onClick={cycleTheme}
+            className="p-2 rounded-lg bg-surface-100 hover:bg-surface-50 text-slate-300 hover:text-white transition-colors border border-card-border flex items-center gap-1.5"
+            title={getThemeTitle()}
+            aria-label="Toggle UI theme"
+          >
+            {getThemeIcon()}
+            <span className="text-[11px] font-bold uppercase hidden sm:inline">
+              {theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'B&W'}
+            </span>
+          </button>
 
           {/* Sound Toggle */}
           <button

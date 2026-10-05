@@ -99,6 +99,7 @@ export function App() {
             onStartGame={startGame}
             onChangeTheme={() => setIsCreateOpen(true)}
             onUpdateTimer={(sec) => updateSettings({ turnTimerSeconds: sec })}
+            onUpdateGameMode={(mode) => updateSettings({ gameMode: mode })}
           />
         ) : (
           /* Active Game Table (or Game Complete) */
@@ -126,12 +127,12 @@ export function App() {
       <CreateGameModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        onCreate={async (playerName, themeId, customTheme, turnTimerSeconds) => {
+        onCreate={async (playerName, themeId, customTheme, turnTimerSeconds, gameMode) => {
           if (publicState && isHost) {
-            updateSettings({ themeId, customTheme, turnTimerSeconds });
+            updateSettings({ themeId, customTheme, turnTimerSeconds, gameMode });
             return { success: true };
           }
-          return await createRoom(playerName, themeId, customTheme, turnTimerSeconds);
+          return await createRoom(playerName, themeId, customTheme, turnTimerSeconds, gameMode);
         }}
       />
 

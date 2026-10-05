@@ -74,15 +74,30 @@ export class GamesService {
     const player = room.players.find((p) => p.id === room.turnPlayerId);
     if (!player || player.hand.length === 0) return null;
 
-    // Pick card to pass: count occurrences, discard least frequent card (avoid breaking pairs)
+    // Pick card to pass: filter out forbidden card in Pro Mode if player has 5 cards
+    let eligibleCards = player.hand;
+    if (
+      room.gameMode === 'pro' &&
+      player.hand.length > 4 &&
+      room.lastPass &&
+      room.lastPass.toPlayerId === player.id &&
+      room.lastPass.cardId
+    ) {
+      const filtered = player.hand.filter((c) => c.id !== room.lastPass?.cardId);
+      if (filtered.length > 0) {
+        eligibleCards = filtered;
+      }
+    }
+
+    // Count occurrences across total hand, discard least frequent card among eligibleCards (avoid breaking pairs)
     const counts = new Map<string, number>();
     for (const card of player.hand) {
       counts.set(card.itemId, (counts.get(card.itemId) || 0) + 1);
     }
 
-    let minCard = player.hand[0];
+    let minCard = eligibleCards[0];
     let minCount = 999;
-    for (const card of player.hand) {
+    for (const card of eligibleCards) {
       const count = counts.get(card.itemId) || 0;
       if (count < minCount) {
         minCount = count;
@@ -111,6 +126,7 @@ export class GamesService {
       themeId?: string;
       customTheme?: { name: string; items: string[] };
       turnTimerSeconds?: number;
+      gameMode?: import('@solavin/shared').GameMode;
     }
   ): InternalGameState {
     if (room.hostId !== hostPlayerId) {
@@ -131,6 +147,8 @@ export class GamesService {
 
     const turnTimer =
       options?.turnTimerSeconds !== undefined ? options.turnTimerSeconds : room.turnTimerSeconds;
+    const gameMode =
+      options?.gameMode !== undefined ? options.gameMode : room.gameMode;
 
     // Reset player statuses
     const resetPlayers = room.players.map((p) => ({
@@ -147,6 +165,7 @@ export class GamesService {
       theme,
       phase: 'LOBBY',
       round: 0,
+      gameMode,
       turnTimerSeconds: turnTimer,
       turnPlayerId: null,
       starterPlayerId: null,

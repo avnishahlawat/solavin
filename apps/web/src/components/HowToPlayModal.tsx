@@ -96,10 +96,31 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ isOpen, onClose 
             </div>
           </div>
 
+          {/* Game Modes Comparison */}
+          <div className="p-4 bg-surface-200/60 border border-card-border rounded-xl space-y-2.5">
+            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-200">
+              Game Modes: Classic vs Pro Mode
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="p-2.5 rounded-lg bg-surface-100 border border-indigo-500/20 space-y-1">
+                <span className="font-bold text-indigo-300">⚡ Classic Mode</span>
+                <p className="text-slate-400 text-[11px] leading-relaxed">
+                  Players can pass any card from their hand, including the card they just received from their neighbor.
+                </p>
+              </div>
+              <div className="p-2.5 rounded-lg bg-surface-100 border border-amber-500/20 space-y-1">
+                <span className="font-bold text-amber-300">🛡️ Pro Mode</span>
+                <p className="text-slate-400 text-[11px] leading-relaxed">
+                  Players holding 5 cards <strong>cannot pass the same card received</strong>. Only the round starter (who was at 3 cards and receives to 4) is permitted to pass the received card.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2.5">
             <Trophy className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-amber-200/90 text-xs leading-relaxed">
-              <strong>Strategy tip:</strong> Watch what cards your neighbor is passing you. If they keep passing you Inception, they aren't collecting it! Be careful not to pass them what they want.
+              <strong>Strategy tip:</strong> Watch what cards your neighbor is passing you. In Pro Mode, you have to think ahead because you cannot instantly redirect what was handed to you!
             </p>
           </div>
         </div>

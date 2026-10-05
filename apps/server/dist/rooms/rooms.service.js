@@ -28,7 +28,7 @@ let RoomsService = RoomsService_1 = class RoomsService {
         } while (this.rooms.has(code));
         return code;
     }
-    createRoom(playerName, socketId, themeId, customThemeData, turnTimerSeconds = 30) {
+    createRoom(playerName, socketId, themeId, customThemeData, turnTimerSeconds = 30, gameMode = 'classic') {
         const trimmedName = playerName.trim();
         if (!trimmedName) {
             throw new common_1.BadRequestException('Player name is required');
@@ -54,11 +54,11 @@ let RoomsService = RoomsService_1 = class RoomsService {
             isConnected: true,
             socketId
         };
-        const newGame = (0, shared_1.createGame)(roomCode, playerId, selectedTheme, turnTimerSeconds);
+        const newGame = (0, shared_1.createGame)(roomCode, playerId, selectedTheme, turnTimerSeconds, gameMode);
         newGame.players = [hostPlayer];
         this.rooms.set(roomCode, newGame);
         this.socketMap.set(socketId, { roomCode, playerId });
-        this.logger.log(`Room created: ${roomCode} by ${trimmedName} (timer: ${turnTimerSeconds}s)`);
+        this.logger.log(`Room created: ${roomCode} by ${trimmedName} (mode: ${gameMode}, timer: ${turnTimerSeconds}s)`);
         return { room: newGame, player: hostPlayer };
     }
     joinRoom(roomCodeInput, playerName, socketId, existingPlayerId) {
@@ -112,7 +112,7 @@ let RoomsService = RoomsService_1 = class RoomsService {
         this.logger.log(`Player ${trimmedName} (${playerId}) joined room ${roomCode} at seat ${seatIndex}`);
         return { room, player: newPlayer, isReconnecting: false };
     }
-    updateSettings(roomCode, hostPlayerId, themeId, customThemeData, turnTimerSeconds) {
+    updateSettings(roomCode, hostPlayerId, themeId, customThemeData, turnTimerSeconds, gameMode) {
         const room = this.rooms.get(roomCode);
         if (!room)
             throw new common_1.NotFoundException('Room not found');
@@ -132,6 +132,9 @@ let RoomsService = RoomsService_1 = class RoomsService {
         }
         if (turnTimerSeconds !== undefined && turnTimerSeconds >= 0) {
             room.turnTimerSeconds = turnTimerSeconds;
+        }
+        if (gameMode) {
+            room.gameMode = gameMode;
         }
         room.updatedAt = Date.now();
         return room;

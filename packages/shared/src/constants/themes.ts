@@ -168,6 +168,18 @@ export const PRESET_THEMES: Theme[] = [
       { id: 'superman', name: 'Superman', icon: '🦸' },
       { id: 'ironman', name: 'Iron Man', icon: '🦾' }
     ]
+  },
+  {
+    id: 'black-and-white',
+    name: 'Black & White (Monochrome)',
+    category: 'Monochrome',
+    description: 'Pure black & white chess pieces and symbols',
+    items: [
+      { id: 'king', name: 'White King', icon: '♔' },
+      { id: 'queen', name: 'Black Queen', icon: '♛' },
+      { id: 'yin-yang', name: 'Yin Yang', icon: '☯️' },
+      { id: 'moon', name: 'Crescent Moon', icon: '🌙' }
+    ]
   }
 ];
 

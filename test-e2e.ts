@@ -121,8 +121,9 @@ async function runE2ETest() {
       throw new Error('Receiving player should have 5 cards!');
     }
 
-    // 5. Next player passes 1 card
-    const cardToPass2 = nextTurnInfo.getState().privateState.cards[0];
+    // 5. Next player passes 1 card (non-received card to ensure generic safety)
+    const receiverCards = nextTurnInfo.getState().privateState.cards;
+    const cardToPass2 = receiverCards.find((c: any) => c.id !== starterCard.id) || receiverCards[0];
     console.log(`5️⃣ Player with 5 cards passes 1 card (${cardToPass2.itemName}) anticlockwise...`);
     nextTurnInfo.socket.emit('game:pass-card', { cardId: cardToPass2.id });
 
@@ -134,8 +135,51 @@ async function runE2ETest() {
       throw new Error('Player should return to 4 cards after passing!');
     }
 
-    // 6. Test Disconnect & Reconnect
-    console.log('6️⃣ Testing player disconnect and reconnection...');
+    // 6. Test Pro Mode: Restart Game in Pro Mode and verify cannot pass received card
+    console.log('6️⃣ Testing Pro Mode (cannot pass received card)...');
+    p1Socket.emit('game:restart', { gameMode: 'pro' });
+    await new Promise((r) => setTimeout(r, 600));
+
+    if (p1State?.publicState.gameMode !== 'pro') {
+      throw new Error('Room should be in Pro Mode after restart!');
+    }
+
+    const proStarterId = p1State.publicState.starterPlayerId;
+    const proStarterInfo = socketMap[proStarterId];
+    const proStarterCard = proStarterInfo.getState().privateState.cards[0];
+
+    // Pro starter passes card
+    proStarterInfo.socket.emit('game:pass-card', { cardId: proStarterCard.id });
+    await new Promise((r) => setTimeout(r, 600));
+
+    const proReceiverId = p1State.publicState.turnPlayerId;
+    const proReceiverInfo = socketMap[proReceiverId];
+    console.log(`✅ Pro Mode receiver has forbiddenCardId: ${proReceiverInfo.getState().privateState.forbiddenCardId}`);
+    if (proReceiverInfo.getState().privateState.forbiddenCardId !== proStarterCard.id) {
+      throw new Error(`forbiddenCardId should be ${proStarterCard.id}`);
+    }
+
+    // Pro receiver attempts to pass the exact received card -> must fail
+    const forbiddenPassResult: any = await new Promise((resolve) => {
+      proReceiverInfo.socket.emit('game:pass-card', { cardId: proStarterCard.id }, resolve);
+    });
+    if (forbiddenPassResult.success) {
+      throw new Error('Pro Mode should NOT allow passing the received card!');
+    }
+    console.log('✅ Pro Mode successfully prevented passing the received card!');
+
+    // Pro receiver passes an allowed card -> must succeed
+    const proAllowedCard = proReceiverInfo.getState().privateState.cards.find((c: any) => c.id !== proStarterCard.id);
+    const allowedPassResult: any = await new Promise((resolve) => {
+      proReceiverInfo.socket.emit('game:pass-card', { cardId: proAllowedCard.id }, resolve);
+    });
+    if (!allowedPassResult.success) {
+      throw new Error('Pro Mode should allow passing non-received card!');
+    }
+    console.log('✅ Pro Mode successfully passed allowed card!');
+
+    // 7. Test Disconnect & Reconnect
+    console.log('7️⃣ Testing player disconnect and reconnection...');
     const originalP2Id = p2State.privateState.player.id;
     p2Socket.disconnect();
     await new Promise((r) => setTimeout(r, 200));

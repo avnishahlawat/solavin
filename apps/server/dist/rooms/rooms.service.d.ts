@@ -7,7 +7,7 @@ export declare class RoomsService {
     createRoom(playerName: string, socketId: string, themeId?: string, customThemeData?: {
         name: string;
         items: string[];
-    }, turnTimerSeconds?: number): {
+    }, turnTimerSeconds?: number, gameMode?: import('@solavin/shared').GameMode): {
         room: InternalGameState;
         player: InternalPlayer;
     };
@@ -19,7 +19,7 @@ export declare class RoomsService {
     updateSettings(roomCode: string, hostPlayerId: string, themeId?: string, customThemeData?: {
         name: string;
         items: string[];
-    }, turnTimerSeconds?: number): InternalGameState;
+    }, turnTimerSeconds?: number, gameMode?: import('@solavin/shared').GameMode): InternalGameState;
     handleDisconnect(socketId: string): {
         room?: InternalGameState;
         player?: InternalPlayer;

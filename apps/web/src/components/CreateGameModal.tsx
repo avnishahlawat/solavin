@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, Sparkles, Check, Clock, AlertCircle } from 'lucide-react';
-import { PRESET_THEMES } from '@solavin/shared';
+import { X, Sparkles, Check, Clock, AlertCircle, Zap, ShieldAlert } from 'lucide-react';
+import { PRESET_THEMES, GameMode } from '@solavin/shared';
 
 interface CreateGameModalProps {
   isOpen: boolean;
@@ -9,12 +9,14 @@ interface CreateGameModalProps {
     playerName: string,
     themeId?: string,
     customTheme?: { name: string; items: string[] },
-    turnTimerSeconds?: number
+    turnTimerSeconds?: number,
+    gameMode?: GameMode
   ) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const CreateGameModal: React.FC<CreateGameModalProps> = ({ isOpen, onClose, onCreate }) => {
   const [playerName, setPlayerName] = useState(localStorage.getItem('solavin_last_name') || '');
+  const [gameMode, setGameMode] = useState<GameMode>('classic');
   const [activeTab, setActiveTab] = useState<'preset' | 'custom'>('preset');
   const [selectedThemeId, setSelectedThemeId] = useState(PRESET_THEMES[0].id);
   const [turnTimerSeconds, setTurnTimerSeconds] = useState<number>(30);
@@ -46,7 +48,7 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ isOpen, onClos
 
     let res;
     if (activeTab === 'preset') {
-      res = await onCreate(trimmedName, selectedThemeId, undefined, turnTimerSeconds);
+      res = await onCreate(trimmedName, selectedThemeId, undefined, turnTimerSeconds, gameMode);
     } else {
       const items = [customItem1.trim(), customItem2.trim(), customItem3.trim(), customItem4.trim()];
       if (items.some((i) => !i)) {
@@ -67,7 +69,8 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ isOpen, onClos
           name: customName.trim() || 'Custom Theme',
           items
         },
-        turnTimerSeconds
+        turnTimerSeconds,
+        gameMode
       );
     }
 
@@ -120,6 +123,54 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ isOpen, onClos
                 required
                 className="w-full px-4 py-3 bg-surface-200 border border-card-border rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm font-medium"
               />
+            </div>
+
+            {/* Game Mode Selector */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                Game Mode
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div
+                  onClick={() => setGameMode('classic')}
+                  className={`p-3.5 rounded-xl border text-left cursor-pointer transition-all ${
+                    gameMode === 'classic'
+                      ? 'bg-indigo-950/40 border-indigo-400 ring-1 ring-indigo-400'
+                      : 'bg-surface-200/50 border-card-border hover:border-slate-600'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-indigo-400" />
+                      <span className="font-bold text-xs text-white">Classic Mode</span>
+                    </div>
+                    {gameMode === 'classic' && <Check className="w-4 h-4 text-indigo-400" />}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Standard 16 Parchi rules: You can pass any card from your hand freely.
+                  </p>
+                </div>
+
+                <div
+                  onClick={() => setGameMode('pro')}
+                  className={`p-3.5 rounded-xl border text-left cursor-pointer transition-all ${
+                    gameMode === 'pro'
+                      ? 'bg-amber-950/40 border-amber-400 ring-1 ring-amber-400'
+                      : 'bg-surface-200/50 border-card-border hover:border-slate-600'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-amber-400" />
+                      <span className="font-bold text-xs text-amber-300">Pro Mode</span>
+                    </div>
+                    {gameMode === 'pro' && <Check className="w-4 h-4 text-amber-400" />}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Strategic Rule: You cannot pass the card you just received from your neighbor!
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Turn Timer Selector */}

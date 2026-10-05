@@ -1,5 +1,6 @@
 export type PlayerStatus = 'active' | 'finished' | 'disconnected' | 'spectating';
 export type GamePhase = 'LOBBY' | 'STARTING' | 'PLAYING' | 'PASSING' | 'ROUND_RESOLVED' | 'GAME_COMPLETE';
+export type GameMode = 'classic' | 'pro';
 export interface ThemeItem {
     id: string;
     name: string;
@@ -52,6 +53,7 @@ export interface PublicGameState {
     roomCode: string;
     phase: GamePhase;
     round: number;
+    gameMode: GameMode;
     players: PublicPlayer[];
     theme: Theme;
     hostId: string;
@@ -69,6 +71,7 @@ export interface PrivatePlayerState {
     player: PublicPlayer;
     cards: Card[];
     isYourTurn: boolean;
+    forbiddenCardId?: string;
     passingTo?: {
         id: string;
         name: string;
@@ -93,6 +96,7 @@ export interface ClientToServerEvents {
             items: string[];
         };
         turnTimerSeconds?: number;
+        gameMode?: GameMode;
     }, callback?: (response: {
         success: boolean;
         roomCode?: string;
@@ -117,6 +121,7 @@ export interface ClientToServerEvents {
             items: string[];
         };
         turnTimerSeconds?: number;
+        gameMode?: GameMode;
     }) => void;
     'game:start': () => void;
     'game:pass-card': (payload: {
@@ -130,6 +135,7 @@ export interface ClientToServerEvents {
             items: string[];
         };
         turnTimerSeconds?: number;
+        gameMode?: GameMode;
     }) => void;
 }
 export interface ServerToClientEvents {
